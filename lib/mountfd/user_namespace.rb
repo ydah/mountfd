@@ -23,6 +23,9 @@ module Mountfd
     def self.normalize(mapping)
       ranges = if mapping.is_a?(Hash)
                  mapping.map do |inside, outside|
+                   if outside.is_a?(Array) && outside.length != 2
+                     raise ArgumentError, "hash mapping values must be an ID or [ID, length]"
+                   end
                    outside, length = outside.is_a?(Array) ? outside : [outside, 1]
                    [inside, outside, length]
                  end
@@ -31,13 +34,20 @@ module Mountfd
                else
                  Array(mapping)
                end
-      ranges = ranges.map { |range| range.map { Integer(_1) } }.sort_by(&:first)
+      ranges = ranges.map do |range|
+        raise ArgumentError, "each namespace mapping must contain three integers" unless range.is_a?(Array) && range.length == 3
+
+        range.map { Integer(_1) }
+      end.sort_by(&:first)
       raise ArgumentError, "a namespace mapping requires at least one range" if ranges.empty?
       raise ArgumentError, "namespace mappings are limited to #{MAX_RANGES} ranges" if ranges.length > MAX_RANGES
 
       ranges.each do |inside, outside, length|
         raise ArgumentError, "mapping IDs must be non-negative" if inside.negative? || outside.negative?
         raise ArgumentError, "mapping length must be positive" unless length.positive?
+        if inside + length > 2**32 || outside + length > 2**32
+          raise ArgumentError, "mapping ranges must fit unsigned 32-bit IDs"
+        end
       end
       validate_non_overlapping!(ranges, 0, "inside")
       validate_non_overlapping!(ranges, 1, "outside")

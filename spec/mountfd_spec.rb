@@ -42,6 +42,9 @@ RSpec.describe Mountfd do
 
   it "rejects unsafe namespace mappings" do
     expect { Mountfd::UserNamespace.normalize(0 => [-1, 1]) }.to raise_error(ArgumentError)
+    expect { Mountfd::UserNamespace.normalize(0 => [1, 2, 3]) }.to raise_error(ArgumentError)
+    expect { Mountfd::UserNamespace.normalize([[0, 1]]) }.to raise_error(ArgumentError)
+    expect { Mountfd::UserNamespace.normalize(2**32 => 0) }.to raise_error(ArgumentError)
     expect { Mountfd::UserNamespace.normalize([[0, 1_000, 2], [1, 2_000, 1]]) }
       .to raise_error(ArgumentError, /overlapping inside/)
     expect { Mountfd::UserNamespace.create(helper: :sometimes) }.to raise_error(ArgumentError)
@@ -60,6 +63,16 @@ RSpec.describe Mountfd do
 
   it "ignores malformed mountinfo lines" do
     expect(Mountfd::MountInfoParser.parse("not mountinfo\n")).to be_empty
+  end
+
+  it "reports only the visible mount when mountinfo contains overmounts" do
+    hidden = "40 20 0:1 / /same rw - tmpfs old rw\n"
+    visible = "41 20 0:2 / /same ro - tmpfs new ro\n"
+    allow(File).to receive(:read).and_return(hidden + visible)
+
+    mounts = Mountfd.mounts(backend: :mountinfo)
+    expect(mounts.map(&:mnt_id)).to eq([41])
+    expect(mounts.first).to be_readonly
   end
 
   it "validates namespace propagation before changing namespaces" do

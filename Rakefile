@@ -30,6 +30,10 @@ namespace :test do
     ENV["MOUNTFD_SYSTEM"] = "1"
     Rake::Task["spec:system"].invoke
   end
+  task adversarial: :compile do
+    ENV["MOUNTFD_SYSTEM"] = ENV["MOUNTFD_EXTENSIVE"] = "1"
+    Rake::Task["spec:system"].invoke
+  end
 end
 
 namespace :research do

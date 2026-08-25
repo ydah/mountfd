@@ -173,12 +173,12 @@ module Mountfd
 
       @mounts_backend = :mountinfo
       pid = ns.nil? ? "self" : Integer(ns)
-      MountInfoParser.parse(File.read("/proc/#{pid}/mountinfo"))
+      read_mountinfo(pid)
     rescue SystemCallError, UnsupportedError
       raise if backend == :statmount
 
       @mounts_backend = :mountinfo
-      MountInfoParser.parse(File.read("/proc/#{ns ? Integer(ns) : 'self'}/mountinfo"))
+      read_mountinfo(ns ? Integer(ns) : "self")
     end
 
     def mounts_backend = @mounts_backend || preferred_mounts_backend(nil)
@@ -274,6 +274,11 @@ module Mountfd
     def preferred_mounts_backend(namespace)
       namespace.nil? && Native.syscall_available?("statmount") &&
         Native.syscall_available?("listmount") ? :statmount : :mountinfo
+    end
+
+    def read_mountinfo(pid)
+      mounts = MountInfoParser.parse(File.read("/proc/#{pid}/mountinfo"))
+      mounts.reverse.uniq(&:mount_point).reverse
     end
 
     def mount_info_from_statmount(value)

@@ -50,11 +50,13 @@ static mountfd_handle *get_handle(VALUE object)
     return handle;
 }
 
+#ifdef __linux__
 static int fd_from(VALUE value)
 {
     if (rb_typeddata_is_kind_of(value, &handle_type)) return get_handle(value)->fd;
     return NUM2INT(value);
 }
+#endif
 
 VALUE mountfd_wrap_fd(int fd)
 {
@@ -88,10 +90,15 @@ static VALUE handle_closed(VALUE self)
     return handle->fd < 0 ? Qtrue : Qfalse;
 }
 
+#ifndef __linux__
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noreturn))
+#endif
 static void unavailable(void)
 {
     rb_raise(eUnsupported, "the Linux new mount API is unavailable on this platform");
 }
+#endif
 
 void mountfd_syscall_failed(const char *name)
 {
