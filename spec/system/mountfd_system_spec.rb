@@ -59,6 +59,31 @@ RSpec.describe "Mountfd system", :system do
     context&.close
   end
 
+  it "creates a filesystem context exclusively when supported" do
+    Mountfd::FsContext.open("tmpfs") do |context|
+      unless Mountfd.features.include?(:create_excl)
+        expect { context.create!(exclusive: true) }.to raise_error(Mountfd::UnsupportedError)
+        next
+      end
+
+      context.create!(exclusive: true)
+      context.mount.discard
+    end
+  end
+
+  it "picks and reconfigures an existing mount" do
+    Dir.mktmpdir do |target|
+      Mountfd.mount("tmpfs", target, options: {size: "1M"})
+      context = Mountfd::FsContext.pick(target)
+      context.set("size", "2M")
+      context.reconfigure!
+      expect(mountinfo(target).options).to include("size=2048k")
+    ensure
+      context&.close unless context&.closed?
+      unmount(target)
+    end
+  end
+
   it "creates a read-only detached bind mount" do
     require_mount_setattr
 

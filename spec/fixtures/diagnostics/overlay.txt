@@ -1,0 +1,1 @@
+e overlay: Unknown parameter 'mountfd_invalid_option'

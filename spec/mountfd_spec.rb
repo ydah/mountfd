@@ -20,6 +20,31 @@ RSpec.describe Mountfd do
     expect(diagnostics.map(&:text)).to eq(["bad option", "deprecated", "note", "unknown"])
   end
 
+  it "parses captured filesystem diagnostics" do
+    %w[tmpfs ext4 overlay].each do |filesystem|
+      raw = File.read(File.join(__dir__, "fixtures/diagnostics/#{filesystem}.txt"))
+      diagnostic = Mountfd::Diagnostic.parse(raw).fetch(0)
+      expect(diagnostic.level).to eq(:error)
+      expect(diagnostic.text).to include(filesystem, "Unknown parameter")
+    end
+  end
+
+  it "dispatches typed fsconfig values" do
+    handle = instance_double(Mountfd::Native::Handle, fileno: 9)
+    context = Mountfd::FsContext.new(nil, handle: handle)
+    allow(Mountfd::Native).to receive(:read_diagnostics).and_return("")
+    expect(Mountfd::Native).to receive(:fsconfig)
+      .with(handle, Mountfd::Native::FSCONFIG_SET_PATH, "lowerdir", "/lower", Mountfd::AT_FDCWD)
+    expect(Mountfd::Native).to receive(:fsconfig)
+      .with(handle, Mountfd::Native::FSCONFIG_SET_FD, "source", nil, 12)
+    expect(Mountfd::Native).to receive(:fsconfig)
+      .with(handle, Mountfd::Native::FSCONFIG_SET_BINARY, "blob", "a\0b", 3)
+
+    context.set_path(:lowerdir, "/lower")
+    context.set_fd(:source, instance_double(IO, fileno: 12))
+    context.set_binary(:blob, "a\0b")
+  end
+
   it "normalizes atime attributes" do
     set, clear = Mountfd::Attributes.build(rdonly: true, atime: :noatime)
 
