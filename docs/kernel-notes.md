@@ -1,6 +1,6 @@
 # Kernel notes
 
-Results recorded on 2026-08-25 while implementing the initial release.
+Results recorded on 2026-08-25 and 2026-08-26 while implementing the initial release.
 
 | Environment | Result |
 |---|---|
@@ -19,21 +19,25 @@ Results recorded on 2026-08-25 while implementing the initial release.
 | Linux 6.8.0-64 arm64, non-root | `newuidmap`/`newgidmap` create a namespace fd with delegated `100000:65536` sub-ID ranges. |
 | Linux 6.8.0-64 arm64 | Safe source-free idmap probe: tmpfs yes; ramfs and hugetlbfs no/unavailable. |
 | Linux 6.8.0-64 arm64 | 1000-mount benchmark, 10 iterations: statmount/listmount 30 ms; mountinfo parse 37 ms. |
-| Linux 5.10.0 arm64, virtme-ng/QEMU | System suite: 15 examples, 0 failures, 11 expected pending; `mount_setattr` reports `UnsupportedError`. |
-| Linux 5.15.0 arm64, virtme-ng/QEMU | System suite: 15 examples, 0 failures, 8 expected pending. |
-| Linux 6.1.0 arm64, virtme-ng/QEMU | System suite: 15 examples, 0 failures, 8 expected pending. |
-| Linux 6.6.0 arm64, virtme-ng/QEMU | System suite: 15 examples, 0 failures, 6 expected pending. |
+| Linux 6.8.0-64 arm64, Ruby 3.4 | Adversarial suite: 17 examples, 0 failures, 2 expected pending. |
+| Linux 5.10.0 arm64, virtme-ng/QEMU | System suite: 17 examples, 0 failures, 11 expected pending; `mount_setattr` and exclusive creation report `UnsupportedError`. |
+| Linux 5.15.0 arm64, virtme-ng/QEMU | System suite: 17 examples, 0 failures, 8 expected pending; ext4 loopback idmap: 1 example, 0 failures. |
+| Linux 6.1.0 arm64, virtme-ng/QEMU | System suite: 17 examples, 0 failures, 8 expected pending. |
+| Linux 6.6.0 arm64, virtme-ng/QEMU | System suite: 17 examples, 0 failures, 6 expected pending; exclusive filesystem-context creation passes. |
+| Linux 6.12.20 arm64, virtme-ng/QEMU | System suite: 17 examples, 0 failures, 4 expected pending; namespace-selected `listmount`/`statmount` pass. |
+| Linux 5.10/5.15/6.1 arm64 | Source-free idmap probe: tmpfs, ramfs, and hugetlbfs no/unavailable. |
+| Linux 6.6/6.12.20 arm64 | Source-free idmap probe: tmpfs yes; ramfs and hugetlbfs no/unavailable. |
 | Linux 6.12.0 arm64, QEMU/TCG | A static initramfs probe passes `NS_GET_MNTNS_ID`, namespace-selected `listmount`, and namespace-selected `statmount`. |
 
 The checked-in VM harness remains the source of truth for older-kernel
-regressions. The full Ruby rootfs suite cannot boot with the tested 6.12.0
-image because its kernel panics in netfs/9p before userspace starts; the static
-initramfs probe isolates and validates the new 6.11 namespace-selection ABI.
-Re-run the matrix before publishing a release.
+regressions. The tested Ubuntu 6.12.0 image panics in netfs/9p before userspace,
+so its new namespace ABI was isolated with a static initramfs; the full Ruby
+suite passes on the 6.12.20 stable update. Re-run the matrix before publishing
+a release.
 
 ```sh
 make -C tools/vm KVER=5.15
 make -C tools/vm KVER=6.1
 make -C tools/vm KVER=6.6
-make -C tools/vm KVER=6.12
+make -C tools/vm KVER=6.12.20
 ```

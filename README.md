@@ -48,18 +48,22 @@ Known unsupported or restricted environments:
 | Ubuntu 24.04+ | AppArmor may block unprivileged user namespaces via `kernel.apparmor_restrict_unprivileged_userns=1`. |
 | GitHub-hosted runners | Unit tests work; system tests depend on the runner's user-namespace policy. |
 
-Filesystem support for idmapped mounts is kernel-dependent. A source-free
-probe on Linux 6.8.0-64 produced:
+Filesystem support for idmapped mounts is kernel-dependent. The safe,
+source-free probe produced:
 
-| filesystem | idmap |
-|---|---|
-| tmpfs | yes |
-| ramfs | no/unavailable |
-| hugetlbfs | no/unavailable |
+| kernel | tmpfs | ramfs | hugetlbfs |
+|---|---|---|---|
+| 5.10 | no/unavailable | no/unavailable | no/unavailable |
+| 5.15 | no/unavailable | no/unavailable | no/unavailable |
+| 6.1 | no/unavailable | no/unavailable | no/unavailable |
+| 6.6 | yes | no/unavailable | no/unavailable |
+| 6.8 | yes | no/unavailable | no/unavailable |
+| 6.12 | yes | no/unavailable | no/unavailable |
 
 Run `rake research:idmap_support` in the target environment. Filesystems that
 need a block device or mount options are deliberately excluded from this safe
-probe; the system suite separately verifies ext4 on a loop device.
+probe; the system suite separately verifies ext4 on a loop device on Linux
+5.15 and 6.8.
 
 ## Installation
 
@@ -192,7 +196,7 @@ bundle exec rake test:ext4       # root plus loop-device access
 For kernel-matrix testing, install `virtme-ng` and run:
 
 ```sh
-make -C tools/vm KVER=6.12
+make -C tools/vm KVER=6.12.20
 ```
 
 The source-free idmap probe prints a Markdown table for the current kernel:

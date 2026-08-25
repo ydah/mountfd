@@ -1,4 +1,4 @@
-KVER ?= 6.12
+KVER ?= 6.12.20
 
 .PHONY: all test
 all: test
