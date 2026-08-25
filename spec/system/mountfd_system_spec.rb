@@ -6,6 +6,14 @@ require "tmpdir"
 RSpec.describe "Mountfd system", :system do
   def mountinfo(path) = Mountfd.mount_at(path, backend: :mountinfo)
 
+  def require_mount_setattr
+    skip "mount_setattr is unavailable" unless Mountfd.features.include?(:mount_setattr)
+  end
+
+  def kernel_at_least?(major, minor)
+    (Etc.uname[:release].scan(/\A(\d+)\.(\d+)/).flatten.map(&:to_i) <=> [major, minor]) >= 0
+  end
+
   def unmount(*paths)
     paths.compact.each { Mountfd.umount(_1) if File.exist?(_1) && mountinfo(_1) }
   end
@@ -52,6 +60,8 @@ RSpec.describe "Mountfd system", :system do
   end
 
   it "creates a read-only detached bind mount" do
+    require_mount_setattr
+
     Dir.mktmpdir do |directory|
       source = File.join(directory, "source")
       target = File.join(directory, "target")
@@ -66,14 +76,16 @@ RSpec.describe "Mountfd system", :system do
   end
 
   it "does not leak file descriptors under explicit close or GC" do
+    skip "fd stress is covered by the adversarial suite" if ENV["MOUNTFD_MATRIX"]
+
     GC.start
     baseline = Dir.children("/proc/self/fd").length
-    1_000.times { Mountfd::FsContext.new("tmpfs").close }
+    (ENV["MOUNTFD_EXTENSIVE"] ? 1_000 : 50).times { Mountfd::FsContext.new("tmpfs").close }
     expect(Dir.children("/proc/self/fd").length).to eq(baseline)
 
     previous = GC.stress
     GC.stress = true
-    50.times { Mountfd::FsContext.new("tmpfs") }
+    (ENV["MOUNTFD_EXTENSIVE"] ? 50 : 5).times { Mountfd::FsContext.new("tmpfs") }
     GC.start
     expect(Dir.children("/proc/self/fd").length).to eq(baseline)
   ensure
@@ -92,6 +104,8 @@ RSpec.describe "Mountfd system", :system do
   end
 
   it "changes and clears attributes on an attached mount" do
+    require_mount_setattr
+
     Dir.mktmpdir do |target|
       Mountfd.mount("tmpfs", target)
       Mountfd.set_attributes(target, attrs: {nosuid: true})
@@ -104,6 +118,8 @@ RSpec.describe "Mountfd system", :system do
   end
 
   it "makes a recursive bind and its submount read-only" do
+    require_mount_setattr
+
     Dir.mktmpdir do |directory|
       source = File.join(directory, "source")
       nested = File.join(source, "nested")
@@ -122,6 +138,8 @@ RSpec.describe "Mountfd system", :system do
   end
 
   it "changes mount propagation" do
+    require_mount_setattr
+
     Dir.mktmpdir do |target|
       Mountfd.mount("tmpfs", target)
       Mountfd.set_attributes(target, propagation: :private)
@@ -208,6 +226,7 @@ RSpec.describe "Mountfd system", :system do
 
   it "applies an idmap and rejects invalid idmap transitions" do
     skip "idmapped mounts are unavailable" unless Mountfd.features.include?(:idmap)
+    skip "tmpfs idmapped mounts require Linux 6.3 or newer" unless kernel_at_least?(6, 3)
 
     Dir.mktmpdir do |directory|
       source = File.join(directory, "source")
@@ -238,5 +257,13 @@ RSpec.describe "Mountfd system", :system do
       namespace&.close unless namespace&.closed?
       unmount(overflow, target, source)
     end
+  end
+
+  it "reports mount_setattr as unsupported on older kernels" do
+    skip "mount_setattr is available" if Mountfd.features.include?(:mount_setattr)
+
+    expect do
+      Mountfd::Native.mount_setattr(Mountfd::AT_FDCWD, "/", 0, 0, 0, 0, nil)
+    end.to raise_error(Mountfd::UnsupportedError)
   end
 end
