@@ -2,6 +2,7 @@
 #include "ruby/io.h"
 #include "extconf.h"
 #include "compat.h"
+#include "mountfd.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -55,7 +56,7 @@ static int fd_from(VALUE value)
     return NUM2INT(value);
 }
 
-static VALUE wrap_fd(int fd)
+VALUE mountfd_wrap_fd(int fd)
 {
     mountfd_handle *handle;
     VALUE object = handle_alloc(cHandle);
@@ -92,7 +93,7 @@ static void unavailable(void)
     rb_raise(eUnsupported, "the Linux new mount API is unavailable on this platform");
 }
 
-static void syscall_failed(const char *name)
+void mountfd_syscall_failed(const char *name)
 {
     if (errno == ENOSYS) rb_raise(eUnsupported, "%s is not supported by this kernel", name);
     rb_syserr_fail(errno, name);
@@ -134,14 +135,14 @@ static VALUE native_fsopen(VALUE self, VALUE fsname, VALUE flags)
 {
 #ifdef __linux__
     int fd = (int)syscall(SYS_fsopen, StringValueCStr(fsname), NUM2UINT(flags));
-    if (fd < 0) syscall_failed("fsopen");
+    if (fd < 0) mountfd_syscall_failed("fsopen");
     if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) < 0) {
         int error = errno;
         close(fd);
         errno = error;
         rb_sys_fail("fcntl");
     }
-    return wrap_fd(fd);
+    return mountfd_wrap_fd(fd);
 #else
     unavailable(); return Qnil;
 #endif
@@ -158,7 +159,7 @@ static VALUE native_fsconfig(VALUE self, VALUE handle, VALUE command, VALUE key,
     else if (cmd == FSCONFIG_SET_BINARY) value_ptr = RSTRING_PTR(StringValue(value));
     else value_ptr = StringValueCStr(value);
     if (syscall(SYS_fsconfig, fd_from(handle), cmd, key_ptr, value_ptr, NUM2INT(aux)) < 0)
-        syscall_failed("fsconfig");
+        mountfd_syscall_failed("fsconfig");
     return Qnil;
 #else
     unavailable(); return Qnil;
@@ -169,8 +170,8 @@ static VALUE native_fsmount(VALUE self, VALUE handle, VALUE flags, VALUE attrs)
 {
 #ifdef __linux__
     int fd = (int)syscall(SYS_fsmount, fd_from(handle), NUM2UINT(flags), NUM2UINT(attrs));
-    if (fd < 0) syscall_failed("fsmount");
-    return wrap_fd(fd);
+    if (fd < 0) mountfd_syscall_failed("fsmount");
+    return mountfd_wrap_fd(fd);
 #else
     unavailable(); return Qnil;
 #endif
@@ -180,12 +181,12 @@ static VALUE native_fspick(VALUE self, VALUE dfd, VALUE path, VALUE flags)
 {
 #ifdef __linux__
     int fd = (int)syscall(SYS_fspick, NUM2INT(dfd), StringValueCStr(path), NUM2UINT(flags));
-    if (fd < 0) syscall_failed("fspick");
+    if (fd < 0) mountfd_syscall_failed("fspick");
     if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) < 0) {
         int error = errno;
         close(fd); errno = error; rb_sys_fail("fcntl");
     }
-    return wrap_fd(fd);
+    return mountfd_wrap_fd(fd);
 #else
     unavailable(); return Qnil;
 #endif
@@ -195,8 +196,8 @@ static VALUE native_open_tree(VALUE self, VALUE dfd, VALUE path, VALUE flags)
 {
 #ifdef __linux__
     int fd = (int)syscall(SYS_open_tree, NUM2INT(dfd), StringValueCStr(path), NUM2UINT(flags));
-    if (fd < 0) syscall_failed("open_tree");
-    return wrap_fd(fd);
+    if (fd < 0) mountfd_syscall_failed("open_tree");
+    return mountfd_wrap_fd(fd);
 #else
     unavailable(); return Qnil;
 #endif
@@ -208,7 +209,7 @@ static VALUE native_move_mount(VALUE self, VALUE from_dfd, VALUE from_path,
 #ifdef __linux__
     if (syscall(SYS_move_mount, fd_from(from_dfd), StringValueCStr(from_path),
                 NUM2INT(to_dfd), StringValueCStr(to_path), NUM2UINT(flags)) < 0)
-        syscall_failed("move_mount");
+        mountfd_syscall_failed("move_mount");
     return Qnil;
 #else
     unavailable(); return Qnil;
@@ -225,7 +226,7 @@ static VALUE native_mount_setattr(VALUE self, VALUE dfd, VALUE path, VALUE flags
         NIL_P(userns_fd) ? 0 : (uint64_t)fd_from(userns_fd)
     };
     if (syscall(SYS_mount_setattr, fd_from(dfd), StringValueCStr(path), NUM2UINT(flags),
-                &attr, MOUNT_ATTR_SIZE_VER0) < 0) syscall_failed("mount_setattr");
+                &attr, MOUNT_ATTR_SIZE_VER0) < 0) mountfd_syscall_failed("mount_setattr");
     return Qnil;
 #else
     unavailable(); return Qnil;
@@ -235,7 +236,7 @@ static VALUE native_mount_setattr(VALUE self, VALUE dfd, VALUE path, VALUE flags
 static VALUE native_umount2(VALUE self, VALUE path, VALUE flags)
 {
 #ifdef __linux__
-    if (umount2(StringValueCStr(path), NUM2INT(flags)) < 0) syscall_failed("umount2");
+    if (umount2(StringValueCStr(path), NUM2INT(flags)) < 0) mountfd_syscall_failed("umount2");
     return Qnil;
 #else
     unavailable(); return Qnil;
@@ -284,4 +285,5 @@ void Init_mountfd(void)
     rb_define_singleton_method(mNative, "umount2", native_umount2, 2);
     rb_define_singleton_method(mNative, "read_diagnostics", native_read_diagnostics, 1);
     mountfd_define_constants(mNative);
+    mountfd_user_namespace_init(mNative);
 }

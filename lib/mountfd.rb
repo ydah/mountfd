@@ -26,4 +26,5 @@ rescue LoadError
 end
 
 require_relative "mountfd/attributes"
+require_relative "mountfd/user_namespace"
 require_relative "mountfd/core"

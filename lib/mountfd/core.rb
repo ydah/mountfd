@@ -178,13 +178,16 @@ module Mountfd
     end
 
     def bind(source, target, recursive: false, attrs: {}, idmap: nil)
+      namespace = UserNamespace.create(**idmap) if idmap.is_a?(Hash)
       detached = open_tree(source, recursive: recursive)
       apply_attributes(detached, attrs, recursive: recursive)
-      detached.idmap!(idmap) if idmap
+      detached.idmap!(namespace || idmap) if idmap
       detached.attach(target)
     rescue StandardError
       detached&.discard unless detached&.closed?
       raise
+    ensure
+      namespace&.close unless namespace&.closed?
     end
 
     def umount(path, detach: true, force: false)
