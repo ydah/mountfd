@@ -1,7 +1,16 @@
 # frozen_string_literal: true
 
+require "rbconfig"
+
 module Mountfd
   module Namespace
+    def self.reexec_user!
+      return if ENV["MOUNTFD_IN_USERNS"]
+      raise UnsupportedError, "user namespaces are unavailable on this platform" unless Native.linux?
+
+      exec({"MOUNTFD_IN_USERNS" => "1"}, "unshare", "-Ur", RbConfig.ruby, $PROGRAM_NAME, *ARGV)
+    end
+
     def self.unshare_mount!(propagation: :private)
       raise ArgumentError, "propagation must be :private or nil" unless propagation.nil? || propagation == :private
 

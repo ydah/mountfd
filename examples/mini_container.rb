@@ -8,7 +8,7 @@ lower = File.expand_path(ARGV.fetch(0) { abort "usage: #{$PROGRAM_NAME} ROOTFS [
 command = ARGV.drop(1)
 command = ["/bin/sh"] if command.empty?
 
-Mountfd::Namespace.unshare_user!
+Mountfd::Namespace.reexec_user!
 Mountfd::Namespace.unshare_mount!
 
 Dir.mktmpdir("mountfd-container") do |directory|

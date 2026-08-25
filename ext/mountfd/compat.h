@@ -4,6 +4,7 @@
 #ifdef __linux__
 # include <fcntl.h>
 # include <stdint.h>
+# include <sys/ioctl.h>
 # include <sys/syscall.h>
 # ifdef HAVE_LINUX_MOUNT_H
 #  include <linux/mount.h>
@@ -137,6 +138,12 @@ struct mount_attr {
 # endif
 # ifndef CLONE_NEWUSER
 #  define CLONE_NEWUSER 0x10000000
+# endif
+# ifndef NSIO
+#  define NSIO 0xb7
+# endif
+# ifndef NS_GET_MNTNS_ID
+#  define NS_GET_MNTNS_ID _IOR(NSIO, 0x5, uint64_t)
 # endif
 #endif
 

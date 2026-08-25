@@ -166,16 +166,26 @@ module Mountfd
       selected = backend || preferred_mounts_backend(ns)
       if selected == :statmount
         @mounts_backend = :statmount
-        return Native.statmounts.map { mount_info_from_statmount(_1) }
+        values = if ns.nil?
+                   Native.statmounts(nil)
+                 elsif ns.respond_to?(:fileno)
+                   Native.statmounts(fileno(ns))
+                 else
+                   File.open("/proc/#{Integer(ns)}/ns/mnt") { Native.statmounts(_1.fileno) }
+                 end
+        return values.map { mount_info_from_statmount(_1) }
       end
 
       raise ArgumentError, "backend must be :statmount or :mountinfo" unless selected == :mountinfo
+      if ns&.respond_to?(:fileno)
+        raise UnsupportedError, "mount namespace descriptors require statmount on Linux 6.11 or newer"
+      end
 
       @mounts_backend = :mountinfo
       pid = ns.nil? ? "self" : Integer(ns)
       read_mountinfo(pid)
     rescue SystemCallError, UnsupportedError
-      raise if backend == :statmount
+      raise if backend == :statmount || ns&.respond_to?(:fileno)
 
       @mounts_backend = :mountinfo
       read_mountinfo(ns ? Integer(ns) : "self")
@@ -272,7 +282,7 @@ module Mountfd
     end
 
     def preferred_mounts_backend(namespace)
-      namespace.nil? && Native.syscall_available?("statmount") &&
+      (namespace.nil? || kernel_at_least?(6, 11)) && Native.syscall_available?("statmount") &&
         Native.syscall_available?("listmount") ? :statmount : :mountinfo
     end
 

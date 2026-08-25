@@ -6,11 +6,13 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 
 #ifdef __linux__
 #define MOUNTFD_LSMT_ROOT UINT64_MAX
 #define MOUNTFD_REQ_SIZE 24
+#define MOUNTFD_REQ_SIZE_NS 32
 #define MOUNTFD_STAT_SIZE 512
 #define MOUNTFD_STAT_MASK 0x2ffU
 
@@ -19,6 +21,7 @@ struct mountfd_mnt_id_req {
     uint32_t spare;
     uint64_t mnt_id;
     uint64_t param;
+    uint64_t mnt_ns_id;
 };
 
 struct mountfd_statmount {
@@ -87,9 +90,12 @@ static VALUE stat_hash(char *buffer, size_t capacity)
     return hash;
 }
 
-static VALUE stat_one(uint64_t id)
+static VALUE stat_one(uint64_t id, uint64_t namespace_id, int namespace_selected)
 {
-    struct mountfd_mnt_id_req request = {MOUNTFD_REQ_SIZE, 0, id, MOUNTFD_STAT_MASK};
+    struct mountfd_mnt_id_req request = {
+        namespace_selected ? MOUNTFD_REQ_SIZE_NS : MOUNTFD_REQ_SIZE,
+        0, id, MOUNTFD_STAT_MASK, namespace_id
+    };
     size_t capacity = 4096;
     char *buffer = NULL;
     long result;
@@ -116,21 +122,30 @@ static VALUE stat_one(uint64_t id)
 }
 #endif
 
-static VALUE native_statmounts(VALUE self)
+static VALUE native_statmounts(VALUE self, VALUE namespace_fd)
 {
 #ifdef __linux__
-    struct mountfd_mnt_id_req request = {MOUNTFD_REQ_SIZE, 0, MOUNTFD_LSMT_ROOT, 0};
+    uint64_t namespace_id = 0;
+    int namespace_selected = !NIL_P(namespace_fd);
+    struct mountfd_mnt_id_req request = {MOUNTFD_REQ_SIZE, 0, MOUNTFD_LSMT_ROOT, 0, 0};
     uint64_t ids[256];
     VALUE mounts = rb_ary_new();
     long count;
     size_t index;
+
+    if (namespace_selected) {
+        if (ioctl(NUM2INT(namespace_fd), NS_GET_MNTNS_ID, &namespace_id) < 0)
+            mountfd_syscall_failed("NS_GET_MNTNS_ID");
+        request.size = MOUNTFD_REQ_SIZE_NS;
+        request.mnt_ns_id = namespace_id;
+    }
 
     while (1) {
         count = syscall(SYS_listmount, &request, ids, 256, 0);
         if (count < 0) mountfd_syscall_failed("listmount");
         if (count == 0) break;
         for (index = 0; index < (size_t)count; index++) {
-            VALUE value = stat_one(ids[index]);
+            VALUE value = stat_one(ids[index], namespace_id, namespace_selected);
             if (!NIL_P(value)) rb_ary_push(mounts, value);
         }
         request.param = ids[count - 1];
@@ -138,6 +153,7 @@ static VALUE native_statmounts(VALUE self)
     }
     return mounts;
 #else
+    (void)namespace_fd;
     VALUE mountfd = rb_const_get(rb_cObject, rb_intern("Mountfd"));
     VALUE error = rb_const_get(mountfd, rb_intern("UnsupportedError"));
     rb_raise(error, "statmount is unavailable on this platform");
@@ -146,5 +162,5 @@ static VALUE native_statmounts(VALUE self)
 
 void mountfd_mount_info_init(VALUE native)
 {
-    rb_define_singleton_method(native, "statmounts", native_statmounts, 0);
+    rb_define_singleton_method(native, "statmounts", native_statmounts, 1);
 }

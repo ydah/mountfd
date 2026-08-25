@@ -102,7 +102,12 @@ static void unavailable(void)
 
 void mountfd_syscall_failed(const char *name)
 {
-    if (errno == ENOSYS) rb_raise(eUnsupported, "%s is not supported by this kernel", name);
+    if (errno == ENOSYS || errno == EOPNOTSUPP)
+        rb_raise(eUnsupported, "%s is not supported by this kernel or filesystem", name);
+    if (errno == EPERM)
+        rb_exc_raise(rb_syserr_new_str(errno, rb_sprintf(
+            "%s (insufficient privilege or operation disallowed in this namespace)", name
+        )));
     rb_syserr_fail(errno, name);
 }
 

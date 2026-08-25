@@ -14,8 +14,23 @@ RSpec.describe "Mountfd system", :system do
     skip "set MOUNTFD_SYSTEM=1 to run mount tests" unless ENV["MOUNTFD_SYSTEM"]
     skip "Linux is required" unless Mountfd::Native.linux?
 
-    Mountfd::Namespace.unshare_user!
+    Mountfd::Namespace.unshare_user! unless ENV["MOUNTFD_IN_USERNS"]
     Mountfd::Namespace.unshare_mount!
+  end
+
+  around do |example|
+    unless ENV["MOUNTFD_SYSTEM"] && Mountfd::Native.linux?
+      example.run
+      next
+    end
+
+    before = Mountfd.mounts(backend: :mountinfo).map { [_1.mnt_id, _1.mount_point] }
+    example.run
+  ensure
+    if before
+      after = Mountfd.mounts(backend: :mountinfo).map { [_1.mnt_id, _1.mount_point] }
+      expect(after).to eq(before), "mount leaked from #{example.full_description}"
+    end
   end
 
   it "mounts, writes to, and unmounts tmpfs" do
@@ -126,6 +141,18 @@ RSpec.describe "Mountfd system", :system do
     project = ->(mount) { [mount.mount_point, mount.fs_type, mount.dev_major, mount.dev_minor] }
     expect(Mountfd.mounts(backend: :statmount).map(&project).sort)
       .to eq(Mountfd.mounts(backend: :mountinfo).map(&project).sort)
+  end
+
+  it "enumerates a selected mount namespace through statmount" do
+    skip "statmount is unavailable" unless Mountfd.features.include?(:statmount)
+
+    File.open("/proc/self/ns/mnt") do |namespace|
+      expected = Mountfd.mounts(backend: :statmount).map(&:mount_point).sort
+      expect(Mountfd.mounts(ns: namespace, backend: :statmount).map(&:mount_point).sort).to eq(expected)
+      expect(Mountfd.mounts(ns: Process.pid, backend: :statmount).map(&:mount_point).sort).to eq(expected)
+    end
+  rescue Errno::ENOTTY
+    skip "mount namespace selection requires Linux 6.11 or newer"
   end
 
   it "paginates listmount beyond one kernel response" do

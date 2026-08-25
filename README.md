@@ -48,9 +48,18 @@ Known unsupported or restricted environments:
 | Ubuntu 24.04+ | AppArmor may block unprivileged user namespaces via `kernel.apparmor_restrict_unprivileged_userns=1`. |
 | GitHub-hosted runners | Unit tests work; system tests depend on the runner's user-namespace policy. |
 
-Filesystem support for idmapped mounts is kernel-dependent. Use
-`rake research:idmap_support` in the target environment instead of relying on
-a static compatibility list.
+Filesystem support for idmapped mounts is kernel-dependent. A source-free
+probe on Linux 6.8.0-64 produced:
+
+| filesystem | idmap |
+|---|---|
+| tmpfs | yes |
+| ramfs | no/unavailable |
+| hugetlbfs | no/unavailable |
+
+Run `rake research:idmap_support` in the target environment. Filesystems that
+need a block device or mount options are deliberately excluded from this safe
+probe; the system suite separately verifies ext4 on a loop device.
 
 ## Installation
 
@@ -136,11 +145,13 @@ Mountfd.mounts                 # Array<Mountfd::MountInfo>
 Mountfd.mount_at("/home")      # MountInfo or nil
 Mountfd.mounts_backend         # :statmount or :mountinfo
 Mountfd.mounts(ns: 1234)       # parses /proc/1234/mountinfo
+File.open("/proc/1234/ns/mnt") { Mountfd.mounts(ns: _1) } # statmount, Linux 6.11+
 ```
 
 The mountinfo fallback decodes octal path escapes and handles the variable
 optional-field section. A disappearing mount during `statmount` enumeration is
-ignored as a normal race.
+ignored as a normal race. An open mount namespace descriptor can be passed on
+Linux 6.11 or newer; an integer namespace argument remains a process ID.
 
 ## Namespace helpers
 
@@ -148,10 +159,15 @@ Namespace changes affect the calling OS thread and are intended for a
 single-threaded setup phase:
 
 ```ruby
+Mountfd::Namespace.reexec_user! # robust entry path, including Ruby 3.4+
 Mountfd::Namespace.unshare_user!(map_root: true)
 Mountfd::Namespace.unshare_mount!(propagation: :private)
 Mountfd.pivot_root(new_root, put_old)
 ```
+
+`reexec_user!` restarts the current command through `unshare -Ur`; use it before
+creating threads. The in-process `unshare_user!` is available when the Ruby
+process has only one OS thread.
 
 See `examples/` for an overlay mini-container, idmapped volume, read-only
 sandbox, and `MOVE_MOUNT_BENEATH` atomic swap.
@@ -169,6 +185,8 @@ enabled:
 
 ```sh
 bundle exec rake test:system
+bundle exec rake test:adversarial # 270-mount pagination and long statmount data
+bundle exec rake test:ext4       # root plus loop-device access
 ```
 
 For kernel-matrix testing, install `virtme-ng` and run:
@@ -181,6 +199,7 @@ The source-free idmap probe prints a Markdown table for the current kernel:
 
 ```sh
 bundle exec rake research:idmap_support
+bundle exec rake benchmark:mounts # defaults to a namespace with 1000 mounts
 ```
 
 ## Scope

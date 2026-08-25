@@ -51,14 +51,29 @@ RSpec.describe Mountfd do
   end
 
   it "parses mountinfo escapes and optional fields" do
-    line = "42 21 8:1 /root\\040dir /mnt\\040point rw,nosuid shared:7 master:2 - ext4 /dev/sda1 ro,errors=remount-ro\n"
+    line = "42 21 8:1 /root\\040dir\\011tab /mnt\\040point\\012line rw,nosuid shared:7 master:2 - ext4 /dev/a\\134b ro,errors=remount-ro\n"
     mount = Mountfd::MountInfoParser.parse(line).fetch(0)
 
     expect(mount.mnt_id).to eq(42)
-    expect(mount.mnt_root).to eq("/root dir")
-    expect(mount.mount_point).to eq("/mnt point")
+    expect(mount.mnt_root).to eq("/root dir\ttab")
+    expect(mount.mount_point).to eq("/mnt point\nline")
+    expect(mount.source).to eq("/dev/a\\b")
     expect(mount.propagation).to eq(shared: 7, master: 2)
     expect(mount).to be_readonly
+  end
+
+  it "assembles recursive open_tree and mount_setattr flags" do
+    handle = instance_double(Mountfd::Native::Handle, close: nil, closed?: false)
+    tree_flags = Mountfd::Native::OPEN_TREE_CLONE | Mountfd::Native::OPEN_TREE_CLOEXEC | Mountfd::Native::AT_RECURSIVE
+    expect(Mountfd::Native).to receive(:open_tree).with(Mountfd::AT_FDCWD, "/source", tree_flags).and_return(handle)
+    expect(Mountfd::Native).to receive(:mount_setattr).with(
+      handle, "", Mountfd::Native::AT_EMPTY_PATH | Mountfd::Native::AT_RECURSIVE,
+      Mountfd::Native::MOUNT_ATTR_RDONLY, 0, 0, nil
+    )
+
+    mount = Mountfd.open_tree("/source", recursive: true)
+    mount.set_attributes(set: [:rdonly], recursive: true)
+    mount.discard
   end
 
   it "ignores malformed mountinfo lines" do
@@ -75,8 +90,30 @@ RSpec.describe Mountfd do
     expect(mounts.first).to be_readonly
   end
 
+  it "passes mount namespace descriptors to statmount" do
+    namespace = instance_double(IO, fileno: 42)
+    expect(Mountfd::Native).to receive(:statmounts).with(42).and_return([])
+
+    expect(Mountfd.mounts(ns: namespace, backend: :statmount)).to be_empty
+  end
+
+  it "rejects mount namespace descriptors with the mountinfo backend" do
+    namespace = instance_double(IO, fileno: 42)
+
+    expect { Mountfd.mounts(ns: namespace, backend: :mountinfo) }
+      .to raise_error(Mountfd::UnsupportedError, /Linux 6\.11/)
+  end
+
   it "validates namespace propagation before changing namespaces" do
     expect { Mountfd::Namespace.unshare_mount!(propagation: :mystery) }.to raise_error(ArgumentError)
+  end
+
+  it "does not re-exec after entering a user namespace" do
+    previous = ENV["MOUNTFD_IN_USERNS"]
+    ENV["MOUNTFD_IN_USERNS"] = "1"
+    expect(Mountfd::Namespace.reexec_user!).to be_nil
+  ensure
+    ENV["MOUNTFD_IN_USERNS"] = previous
   end
 
   it "requires a detached mount for atomic replacement" do

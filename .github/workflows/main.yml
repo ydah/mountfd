@@ -49,4 +49,4 @@ jobs:
       - name: Permit unprivileged user namespaces
         run: sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
       - name: Run isolated mount tests
-        run: bundle exec rake test:system
+        run: bundle exec rake test:adversarial

@@ -17,6 +17,10 @@ RSpec::Core::RakeTask.new("spec:system") do |task|
   task.pattern = "spec/system/**/*_spec.rb"
 end
 
+RSpec::Core::RakeTask.new("spec:ext4") do |task|
+  task.pattern = "spec/ext4/**/*_spec.rb"
+end
+
 YARD::Rake::YardocTask.new(:yard)
 
 desc "Validate RBS signatures"
@@ -34,6 +38,10 @@ namespace :test do
     ENV["MOUNTFD_SYSTEM"] = ENV["MOUNTFD_EXTENSIVE"] = "1"
     Rake::Task["spec:system"].invoke
   end
+  task ext4: :compile do
+    ENV["MOUNTFD_EXT4"] = "1"
+    Rake::Task["spec:ext4"].invoke
+  end
 end
 
 namespace :research do
@@ -43,15 +51,17 @@ namespace :research do
   end
 end
 
-namespace :gen do
-  desc "Dump mount constants from the installed Linux UAPI headers"
-  task :constants do
-    abort "Linux headers are required" unless RUBY_PLATFORM.include?("linux")
+namespace :benchmark do
+  desc "Compare statmount with mountinfo parsing in a 1000-mount namespace"
+  task mounts: :compile do
+    ruby "-Ilib", "benchmark/mounts.rb"
+  end
+end
 
-    FileUtils.mkdir_p("tmp")
-    compiler = ENV.fetch("CC", "cc")
-    sh compiler, "tools/dump_constants.c", "-o", "tmp/dump_constants"
-    File.write("tmp/constants.txt", IO.popen(["tmp/dump_constants"], &:read))
+namespace :gen do
+  desc "Generate mount constants from the installed Linux UAPI headers"
+  task :constants do
+    ruby "tools/generate_constants.rb"
   end
 end
 
