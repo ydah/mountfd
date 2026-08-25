@@ -55,7 +55,10 @@ module Mountfd
     def set_flag(key) = configure(Native::FSCONFIG_SET_FLAG, key, nil, 0)
     def set_path(key, path, dfd: AT_FDCWD) = configure(Native::FSCONFIG_SET_PATH, key, path.to_path, dfd)
     def set_fd(key, io) = configure(Native::FSCONFIG_SET_FD, key, nil, Mountfd.fileno(io))
-    def set_binary(key, bytes) = configure(Native::FSCONFIG_SET_BINARY, key, String(bytes), bytes.bytesize)
+    def set_binary(key, bytes)
+      value = String(bytes)
+      configure(Native::FSCONFIG_SET_BINARY, key, value, value.bytesize)
+    end
 
     def create!(exclusive: false)
       command = exclusive ? Native::FSCONFIG_CMD_CREATE_EXCL : Native::FSCONFIG_CMD_CREATE
@@ -103,6 +106,21 @@ module Mountfd
     def closed? = @handle.closed?
     def discard = close
 
+    def set_attributes(set: [], clr: [], propagation: nil, idmap: nil, recursive: false)
+      flags = Native::AT_EMPTY_PATH
+      flags |= Native::AT_RECURSIVE if recursive
+      Native.mount_setattr(
+        @handle, "", flags, Attributes.flags(set), Attributes.flags(clr),
+        Attributes.propagation(propagation), idmap && Mountfd.fileno(idmap)
+      )
+      self
+    rescue SystemCallError => error
+      exception = idmap ? IdmapError : MountError
+      raise exception, "mount_setattr: #{error.message}", cause: error
+    end
+
+    def idmap!(userns) = set_attributes(set: [:idmap], idmap: userns)
+
     def attach(path, beneath: false)
       flags = Native::MOVE_MOUNT_F_EMPTY_PATH
       flags |= Native::MOVE_MOUNT_BENEATH if beneath
@@ -144,6 +162,31 @@ module Mountfd
       DetachedMount.new(Native.open_tree(AT_FDCWD, path.to_path, flags))
     end
 
+    def mount(source, target, type: source, options: {}, attrs: {})
+      detached = nil
+      FsContext.open(type) do |context|
+        context.set("source", source) unless source.to_s == type.to_s
+        options.each { |key, value| context.set(key, value) }
+        context.create!
+        detached = context.mount(attrs: attrs)
+        apply_attributes(detached, attrs)
+        detached.attach(target)
+      end
+    rescue StandardError
+      detached&.discard unless detached&.closed?
+      raise
+    end
+
+    def bind(source, target, recursive: false, attrs: {}, idmap: nil)
+      detached = open_tree(source, recursive: recursive)
+      apply_attributes(detached, attrs, recursive: recursive)
+      detached.idmap!(idmap) if idmap
+      detached.attach(target)
+    rescue StandardError
+      detached&.discard unless detached&.closed?
+      raise
+    end
+
     def umount(path, detach: true, force: false)
       flags = (detach ? 2 : 0) | (force ? 1 : 0)
       Native.umount2(path.to_path, flags)
@@ -155,6 +198,12 @@ module Mountfd
 
     def track(mount) = (@pending_mounts ||= []) << mount
     def untrack(mount) = @pending_mounts&.delete(mount)
+
+    def apply_attributes(mount, attributes, recursive: false)
+      set, clr = Attributes.build(attributes)
+      mount.set_attributes(set: set, clr: clr, recursive: recursive) if (set | clr).positive?
+      mount
+    end
 
     def kernel_at_least?(major, minor)
       current = Etc.uname[:release].scan(/\A(\d+)\.(\d+)/).flatten.map(&:to_i)

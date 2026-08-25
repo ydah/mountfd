@@ -117,6 +117,18 @@ struct mount_attr {
 # ifndef AT_EMPTY_PATH
 #  define AT_EMPTY_PATH 0x1000
 # endif
+# ifndef MS_UNBINDABLE
+#  define MS_UNBINDABLE (1 << 17)
+# endif
+# ifndef MS_PRIVATE
+#  define MS_PRIVATE (1 << 18)
+# endif
+# ifndef MS_SLAVE
+#  define MS_SLAVE (1 << 19)
+# endif
+# ifndef MS_SHARED
+#  define MS_SHARED (1 << 20)
+# endif
 #endif
 
 #endif

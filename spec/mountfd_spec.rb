@@ -22,4 +22,9 @@ RSpec.describe Mountfd do
     expect(set).to eq(Mountfd::Native::MOUNT_ATTR_RDONLY | Mountfd::Native::MOUNT_ATTR_NOATIME)
     expect(clear).to eq(Mountfd::Native::MOUNT_ATTR__ATIME)
   end
+
+  it "validates propagation names" do
+    expect(Mountfd::Attributes.propagation(:private)).to eq(Mountfd::Native::MS_PRIVATE)
+    expect { Mountfd::Attributes.propagation(:mystery) }.to raise_error(ArgumentError)
+  end
 end

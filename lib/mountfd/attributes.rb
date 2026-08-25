@@ -16,6 +16,12 @@ module Mountfd
       noatime: Native::MOUNT_ATTR_NOATIME,
       strictatime: Native::MOUNT_ATTR_STRICTATIME
     }.freeze
+    PROPAGATION = {
+      unbindable: Native::MS_UNBINDABLE,
+      private: Native::MS_PRIVATE,
+      slave: Native::MS_SLAVE,
+      shared: Native::MS_SHARED
+    }.freeze
 
     def self.build(attributes)
       set = clr = 0
@@ -33,6 +39,20 @@ module Mountfd
         value ? set |= flag : clr |= flag
       end
       [set, clr]
+    end
+
+    def self.flags(names)
+      return names if names.is_a?(Integer)
+
+      Array(names).reduce(0) do |flags, name|
+        flags | VALUES.fetch(name.to_sym) { raise ArgumentError, "unknown mount attribute: #{name.inspect}" }
+      end
+    end
+
+    def self.propagation(value)
+      return 0 if value.nil?
+
+      PROPAGATION.fetch(value.to_sym) { raise ArgumentError, "unknown propagation: #{value.inspect}" }
     end
   end
 end
