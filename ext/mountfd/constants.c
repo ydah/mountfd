@@ -44,9 +44,12 @@ void mountfd_define_constants(VALUE native)
     DEF(AT_RECURSIVE);
     DEF(AT_EMPTY_PATH);
     DEF(MS_UNBINDABLE);
+    DEF(MS_REC);
     DEF(MS_PRIVATE);
     DEF(MS_SLAVE);
     DEF(MS_SHARED);
+    DEF(CLONE_NEWNS);
+    DEF(CLONE_NEWUSER);
 # undef DEF
 #else
 # define DEF(name, value) rb_define_const(native, name, ULL2NUM(value))
@@ -89,9 +92,12 @@ void mountfd_define_constants(VALUE native)
     DEF("AT_RECURSIVE", 0x8000);
     DEF("AT_EMPTY_PATH", 0x1000);
     DEF("MS_UNBINDABLE", 0x20000);
+    DEF("MS_REC", 0x4000);
     DEF("MS_PRIVATE", 0x40000);
     DEF("MS_SLAVE", 0x80000);
     DEF("MS_SHARED", 0x100000);
+    DEF("CLONE_NEWNS", 0x00020000);
+    DEF("CLONE_NEWUSER", 0x10000000);
 # undef DEF
 #endif
 }

@@ -184,8 +184,32 @@ static VALUE native_user_namespace(VALUE self, VALUE uid_value, VALUE gid_value,
 #endif
 }
 
+static VALUE native_unshare_user(VALUE self, VALUE map_root_value)
+{
+#ifdef __linux__
+    uid_t uid = getuid();
+    gid_t gid = getgid();
+    char uid_map[64], gid_map[64];
+    if (unshare(CLONE_NEWUSER) < 0) mountfd_syscall_failed("unshare(CLONE_NEWUSER)");
+    if (!RTEST(map_root_value)) return Qnil;
+
+    snprintf(uid_map, sizeof(uid_map), "0 %lu 1\n", (unsigned long)uid);
+    snprintf(gid_map, sizeof(gid_map), "0 %lu 1\n", (unsigned long)gid);
+    if (write_proc_file(getpid(), "uid_map", uid_map) < 0) rb_sys_fail("write uid_map");
+    if (write_proc_file(getpid(), "setgroups", "deny") < 0 && errno != ENOENT && errno != EPERM)
+        rb_sys_fail("write setgroups");
+    if (write_proc_file(getpid(), "gid_map", gid_map) < 0) rb_sys_fail("write gid_map");
+    return Qnil;
+#else
+    VALUE mountfd = rb_const_get(rb_cObject, rb_intern("Mountfd"));
+    VALUE error = rb_const_get(mountfd, rb_intern("UnsupportedError"));
+    rb_raise(error, "user namespaces are unavailable on this platform");
+#endif
+}
+
 void mountfd_user_namespace_init(VALUE native)
 {
     rb_define_singleton_method(native, "open_handle", native_open_handle, 1);
     rb_define_singleton_method(native, "user_namespace", native_user_namespace, 3);
+    rb_define_singleton_method(native, "unshare_user", native_unshare_user, 1);
 }

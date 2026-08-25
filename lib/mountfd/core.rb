@@ -34,7 +34,7 @@ module Mountfd
     end
 
     def self.pick(path, flags: 0)
-      new(nil, handle: Native.fspick(AT_FDCWD, path.to_path, flags | Native::FSPICK_CLOEXEC))
+      new(nil, handle: Native.fspick(AT_FDCWD, File.path(path), flags | Native::FSPICK_CLOEXEC))
     end
 
     def initialize(filesystem, flags: 0, handle: nil)
@@ -53,7 +53,7 @@ module Mountfd
     end
 
     def set_flag(key) = configure(Native::FSCONFIG_SET_FLAG, key, nil, 0)
-    def set_path(key, path, dfd: AT_FDCWD) = configure(Native::FSCONFIG_SET_PATH, key, path.to_path, dfd)
+    def set_path(key, path, dfd: AT_FDCWD) = configure(Native::FSCONFIG_SET_PATH, key, File.path(path), dfd)
     def set_fd(key, io) = configure(Native::FSCONFIG_SET_FD, key, nil, Mountfd.fileno(io))
     def set_binary(key, bytes)
       value = String(bytes)
@@ -124,9 +124,9 @@ module Mountfd
     def attach(path, beneath: false)
       flags = Native::MOVE_MOUNT_F_EMPTY_PATH
       flags |= Native::MOVE_MOUNT_BENEATH if beneath
-      Native.move_mount(@handle, "", AT_FDCWD, path.to_path, flags)
+      Native.move_mount(@handle, "", AT_FDCWD, File.path(path), flags)
       close
-      AttachedMount.new(path.to_path)
+      AttachedMount.new(File.path(path))
     rescue SystemCallError => error
       raise MountError, "move_mount: #{error.message}", cause: error
     end
@@ -156,10 +156,36 @@ module Mountfd
 
     def pending_mounts = (@pending_mounts || []).reject(&:closed?).dup
 
+    def mounts(ns: nil, backend: nil)
+      selected = backend || preferred_mounts_backend(ns)
+      if selected == :statmount
+        @mounts_backend = :statmount
+        return Native.statmounts.map { mount_info_from_statmount(_1) }
+      end
+
+      raise ArgumentError, "backend must be :statmount or :mountinfo" unless selected == :mountinfo
+
+      @mounts_backend = :mountinfo
+      pid = ns.nil? ? "self" : Integer(ns)
+      MountInfoParser.parse(File.read("/proc/#{pid}/mountinfo"))
+    rescue SystemCallError, UnsupportedError
+      raise if backend == :statmount
+
+      @mounts_backend = :mountinfo
+      MountInfoParser.parse(File.read("/proc/#{ns ? Integer(ns) : 'self'}/mountinfo"))
+    end
+
+    def mounts_backend = @mounts_backend || preferred_mounts_backend(nil)
+
+    def mount_at(path, **options)
+      target = File.expand_path(File.path(path))
+      mounts(**options).find { File.expand_path(_1.mount_point) == target }
+    end
+
     def open_tree(path, recursive: false)
       flags = Native::OPEN_TREE_CLONE | Native::OPEN_TREE_CLOEXEC
       flags |= Native::AT_RECURSIVE if recursive
-      DetachedMount.new(Native.open_tree(AT_FDCWD, path.to_path, flags))
+      DetachedMount.new(Native.open_tree(AT_FDCWD, File.path(path), flags))
     end
 
     def mount(source, target, type: source, options: {}, attrs: {})
@@ -192,7 +218,32 @@ module Mountfd
 
     def umount(path, detach: true, force: false)
       flags = (detach ? 2 : 0) | (force ? 1 : 0)
-      Native.umount2(path.to_path, flags)
+      Native.umount2(File.path(path), flags)
+    end
+
+    def pivot_root(new_root, put_old) = Native.pivot_root(File.path(new_root), File.path(put_old))
+
+    def set_attributes(path, attrs: {}, propagation: nil, recursive: false)
+      set, clr = Attributes.build(attrs)
+      flags = recursive ? Native::AT_RECURSIVE : 0
+      Native.mount_setattr(
+        AT_FDCWD, File.path(path), flags, set, clr, Attributes.propagation(propagation), nil
+      )
+      nil
+    rescue SystemCallError => error
+      raise MountError, "mount_setattr: #{error.message}", cause: error
+    end
+
+    def replace(path)
+      detached = yield
+      raise ArgumentError, "replace block must return a DetachedMount" unless detached.is_a?(DetachedMount)
+
+      detached.attach(path, beneath: true)
+      umount(path)
+      AttachedMount.new(File.path(path))
+    rescue StandardError
+      detached&.discard unless detached&.closed?
+      raise
     end
 
     def fileno(value) = value.respond_to?(:fileno) ? value.fileno : Integer(value)
@@ -206,6 +257,28 @@ module Mountfd
       set, clr = Attributes.build(attributes)
       mount.set_attributes(set: set, clr: clr, recursive: recursive) if (set | clr).positive?
       mount
+    end
+
+    def preferred_mounts_backend(namespace)
+      namespace.nil? && Native.syscall_available?("statmount") &&
+        Native.syscall_available?("listmount") ? :statmount : :mountinfo
+    end
+
+    def mount_info_from_statmount(value)
+      options = value[:options]&.split(",") || []
+      attrs = []
+      attrs << :rdonly if (value[:attrs] & Native::MOUNT_ATTR_RDONLY).positive?
+      attrs << :idmap if (value[:attrs] & Native::MOUNT_ATTR_IDMAP).positive?
+      propagation = {}
+      Attributes::PROPAGATION.each { |name, flag| propagation[name] = true if value[:propagation] == flag }
+      propagation[:shared] = value[:peer_group] if value[:peer_group].positive?
+      propagation[:master] = value[:master] if value[:master].positive?
+      propagation[:propagate_from] = value[:propagate_from] if value[:propagate_from].positive?
+      MountInfo.new(
+        value[:mnt_id], value[:parent_id], value[:mnt_root], value[:mount_point],
+        value[:fs_type], value[:source], options.freeze, propagation.freeze, attrs.freeze,
+        value[:dev_major], value[:dev_minor]
+      )
     end
 
     def kernel_at_least?(major, minor)

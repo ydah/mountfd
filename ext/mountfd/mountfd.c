@@ -286,4 +286,6 @@ void Init_mountfd(void)
     rb_define_singleton_method(mNative, "read_diagnostics", native_read_diagnostics, 1);
     mountfd_define_constants(mNative);
     mountfd_user_namespace_init(mNative);
+    mountfd_mount_info_init(mNative);
+    mountfd_namespace_init(mNative);
 }

@@ -18,7 +18,7 @@ module Mountfd
     end
 
     def self.from_pid(pid) = from_path("/proc/#{Integer(pid)}/ns/user")
-    def self.from_path(path) = new(Native.open_handle(path.to_path))
+    def self.from_path(path) = new(Native.open_handle(File.path(path)))
 
     def self.normalize(mapping)
       ranges = if mapping.is_a?(Hash)

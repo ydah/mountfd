@@ -120,6 +120,9 @@ struct mount_attr {
 # ifndef MS_UNBINDABLE
 #  define MS_UNBINDABLE (1 << 17)
 # endif
+# ifndef MS_REC
+#  define MS_REC 16384
+# endif
 # ifndef MS_PRIVATE
 #  define MS_PRIVATE (1 << 18)
 # endif
@@ -128,6 +131,12 @@ struct mount_attr {
 # endif
 # ifndef MS_SHARED
 #  define MS_SHARED (1 << 20)
+# endif
+# ifndef CLONE_NEWNS
+#  define CLONE_NEWNS 0x00020000
+# endif
+# ifndef CLONE_NEWUSER
+#  define CLONE_NEWUSER 0x10000000
 # endif
 #endif
 

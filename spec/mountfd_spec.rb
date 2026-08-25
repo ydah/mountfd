@@ -42,4 +42,27 @@ RSpec.describe Mountfd do
       .to raise_error(ArgumentError, /overlapping inside/)
     expect { Mountfd::UserNamespace.create(helper: :sometimes) }.to raise_error(ArgumentError)
   end
+
+  it "parses mountinfo escapes and optional fields" do
+    line = "42 21 8:1 /root\\040dir /mnt\\040point rw,nosuid shared:7 master:2 - ext4 /dev/sda1 ro,errors=remount-ro\n"
+    mount = Mountfd::MountInfoParser.parse(line).fetch(0)
+
+    expect(mount.mnt_id).to eq(42)
+    expect(mount.mnt_root).to eq("/root dir")
+    expect(mount.mount_point).to eq("/mnt point")
+    expect(mount.propagation).to eq(shared: 7, master: 2)
+    expect(mount).to be_readonly
+  end
+
+  it "ignores malformed mountinfo lines" do
+    expect(Mountfd::MountInfoParser.parse("not mountinfo\n")).to be_empty
+  end
+
+  it "validates namespace propagation before changing namespaces" do
+    expect { Mountfd::Namespace.unshare_mount!(propagation: :mystery) }.to raise_error(ArgumentError)
+  end
+
+  it "requires a detached mount for atomic replacement" do
+    expect { Mountfd.replace("/tmp") { nil } }.to raise_error(ArgumentError)
+  end
 end
