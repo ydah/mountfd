@@ -5,6 +5,10 @@ RSpec.describe Mountfd do
     expect(Mountfd::VERSION).not_to be nil
   end
 
+  it "retains diagnostics on mount errors" do
+    expect(Mountfd::MountError.new("failed", [Mountfd::Diagnostic.new(:error, "detail")]).diagnostics.length).to eq(1)
+  end
+
   it "loads without Linux syscall support" do
     expect(Mountfd.supported?).to be(false) unless RUBY_PLATFORM.include?("linux")
   end

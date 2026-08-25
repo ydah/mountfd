@@ -1,0 +1,118 @@
+module Mountfd
+  VERSION: String
+  AT_FDCWD: Integer
+
+  class Error < StandardError
+  end
+
+  class UnsupportedError < Error
+  end
+
+  class ConfigError < Error
+    attr_reader diagnostics: Array[Diagnostic]
+    def initialize: (String message, ?Array[Diagnostic] diagnostics) -> void
+  end
+
+  class MountError < ConfigError
+  end
+
+  class IdmapError < Error
+  end
+
+  class Diagnostic
+    attr_reader level: :error | :warning | :info
+    attr_reader text: String
+    def self.parse: (String raw) -> Array[Diagnostic]
+    def to_s: () -> String
+  end
+
+  module Attributes
+    def self.build: (Hash[Symbol | String, untyped] attributes) -> [Integer, Integer]
+    def self.flags: (Integer | Array[Symbol | String] names) -> Integer
+    def self.propagation: (Symbol | String | nil value) -> Integer
+  end
+
+  class FsContext
+    attr_reader diagnostics: Array[Diagnostic]
+    def self.open: [T] (String filesystem, ?flags: Integer) { (FsContext) -> T } -> T
+                 | (String filesystem, ?flags: Integer) -> FsContext
+    def self.pick: (String path, ?flags: Integer) -> FsContext
+    def initialize: (String filesystem, ?flags: Integer, ?handle: untyped) -> void
+    def fileno: () -> Integer
+    def closed?: () -> bool
+    def warnings: () -> Array[Diagnostic]
+    def set: (String | Symbol key, ?untyped value) -> FsContext
+    def set_flag: (String | Symbol key) -> FsContext
+    def set_path: (String | Symbol key, String path, ?dfd: Integer) -> FsContext
+    def set_fd: (String | Symbol key, _Fileno io) -> FsContext
+    def set_binary: (String | Symbol key, String bytes) -> FsContext
+    def create!: (?exclusive: bool) -> FsContext
+    def reconfigure!: () -> FsContext
+    def mount: (?attrs: Hash[Symbol, untyped]) -> DetachedMount
+    def close: () -> nil
+  end
+
+  interface _Fileno
+    def fileno: () -> Integer
+  end
+
+  class DetachedMount
+    def fileno: () -> Integer
+    def closed?: () -> bool
+    def discard: () -> nil
+    def close: () -> nil
+    def set_attributes: (?set: Integer | Array[Symbol], ?clr: Integer | Array[Symbol], ?propagation: Symbol?, ?idmap: _Fileno?, ?recursive: bool) -> DetachedMount
+    def idmap!: (_Fileno userns) -> DetachedMount
+    def attach: (String path, ?beneath: bool) -> AttachedMount
+  end
+
+  class AttachedMount
+    attr_reader path: String
+  end
+
+  class UserNamespace
+    def self.create: (?uid: untyped, ?gid: untyped, ?helper: :auto | bool) -> UserNamespace
+    def self.from_pid: (Integer pid) -> UserNamespace
+    def self.from_path: (String path) -> UserNamespace
+    def self.normalize: (untyped mapping) -> Array[[Integer, Integer, Integer]]
+    def fileno: () -> Integer
+    def closed?: () -> bool
+    def close: () -> nil
+  end
+
+  class MountInfo
+    attr_reader mnt_id: Integer
+    attr_reader parent_id: Integer
+    attr_reader mnt_root: String
+    attr_reader mount_point: String
+    attr_reader fs_type: String
+    attr_reader source: String?
+    attr_reader options: Array[String]
+    attr_reader propagation: Hash[Symbol, Integer | bool]
+    attr_reader attrs: Array[Symbol]
+    attr_reader dev_major: Integer
+    attr_reader dev_minor: Integer
+    def idmapped?: () -> bool
+    def readonly?: () -> bool
+  end
+
+  module Namespace
+    def self.unshare_mount!: (?propagation: :private | nil) -> nil
+    def self.unshare_user!: (?map_root: bool) -> nil
+  end
+
+  def self.supported?: () -> bool
+  def self.features: () -> Array[Symbol]
+  def self.pending_mounts: () -> Array[DetachedMount]
+  def self.open_tree: [T] (String path, ?recursive: bool) { (DetachedMount) -> T } -> T
+                    | (String path, ?recursive: bool) -> DetachedMount
+  def self.mount: (String source, String target, ?type: String, ?options: Hash[Symbol | String, untyped], ?attrs: Hash[Symbol, untyped]) -> AttachedMount
+  def self.bind: (String source, String target, ?recursive: bool, ?attrs: Hash[Symbol, untyped], ?idmap: UserNamespace | Hash[Symbol, untyped]?) -> AttachedMount
+  def self.umount: (String path, ?detach: bool, ?force: bool) -> nil
+  def self.pivot_root: (String new_root, String put_old) -> nil
+  def self.set_attributes: (String path, ?attrs: Hash[Symbol, untyped], ?propagation: Symbol?, ?recursive: bool) -> nil
+  def self.replace: (String path) { () -> DetachedMount } -> AttachedMount
+  def self.mounts: (?ns: Integer?, ?backend: :statmount | :mountinfo) -> Array[MountInfo]
+  def self.mounts_backend: () -> (:statmount | :mountinfo)
+  def self.mount_at: (String path, ?ns: Integer?, ?backend: :statmount | :mountinfo) -> MountInfo?
+end

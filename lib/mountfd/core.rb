@@ -61,6 +61,10 @@ module Mountfd
     end
 
     def create!(exclusive: false)
+      if exclusive && !Mountfd.features.include?(:create_excl)
+        raise UnsupportedError, "exclusive fsconfig creation requires Linux 6.6 or newer"
+      end
+
       command = exclusive ? Native::FSCONFIG_CMD_CREATE_EXCL : Native::FSCONFIG_CMD_CREATE
       configure(command, nil, nil, 0)
     end
@@ -69,7 +73,9 @@ module Mountfd
 
     def mount(attrs: {})
       attr_set, = Attributes.build(attrs)
-      handle = with_diagnostics("fsmount") { Native.fsmount(@handle, Native::FSMOUNT_CLOEXEC, attr_set) }
+      handle = with_diagnostics("fsmount", MountError) do
+        Native.fsmount(@handle, Native::FSMOUNT_CLOEXEC, attr_set)
+      end
       DetachedMount.new(handle)
     end
 
@@ -82,13 +88,13 @@ module Mountfd
       self
     end
 
-    def with_diagnostics(operation)
+    def with_diagnostics(operation, error_class = ConfigError)
       result = yield
       drain_diagnostics
       result
     rescue SystemCallError => error
       drain_diagnostics
-      raise ConfigError.new("#{operation}: #{error.message}", diagnostics), cause: error
+      raise error_class.new("#{operation}: #{error.message}", diagnostics), cause: error
     end
 
     def drain_diagnostics
@@ -185,7 +191,14 @@ module Mountfd
     def open_tree(path, recursive: false)
       flags = Native::OPEN_TREE_CLONE | Native::OPEN_TREE_CLOEXEC
       flags |= Native::AT_RECURSIVE if recursive
-      DetachedMount.new(Native.open_tree(AT_FDCWD, File.path(path), flags))
+      mount = DetachedMount.new(Native.open_tree(AT_FDCWD, File.path(path), flags))
+      return mount unless block_given?
+
+      begin
+        yield mount
+      ensure
+        mount.discard unless mount.closed?
+      end
     end
 
     def mount(source, target, type: source, options: {}, attrs: {})
@@ -195,7 +208,6 @@ module Mountfd
         options.each { |key, value| context.set(key, value) }
         context.create!
         detached = context.mount(attrs: attrs)
-        apply_attributes(detached, attrs)
         detached.attach(target)
       end
     rescue StandardError

@@ -15,7 +15,7 @@ module Mountfd
     end
   end
 
-  class MountError < Error; end
+  class MountError < ConfigError; end
   class IdmapError < Error; end
 end
 
@@ -27,4 +27,6 @@ end
 
 require_relative "mountfd/attributes"
 require_relative "mountfd/user_namespace"
+require_relative "mountfd/mount_info"
+require_relative "mountfd/namespace"
 require_relative "mountfd/core"

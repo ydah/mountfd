@@ -3,6 +3,7 @@
 require "bundler/gem_tasks"
 require "rake/extensiontask"
 require "rspec/core/rake_task"
+require "yard"
 
 Rake::ExtensionTask.new("mountfd") do |extension|
   extension.lib_dir = "lib/mountfd"
@@ -14,6 +15,13 @@ end
 
 RSpec::Core::RakeTask.new("spec:system") do |task|
   task.pattern = "spec/system/**/*_spec.rb"
+end
+
+YARD::Rake::YardocTask.new(:yard)
+
+desc "Validate RBS signatures"
+task :rbs do
+  sh "rbs", "-I", "sig", "validate"
 end
 
 namespace :test do
