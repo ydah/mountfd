@@ -174,7 +174,10 @@ creating threads. The in-process `unshare_user!` is available when the Ruby
 process has only one OS thread.
 
 See `examples/` for an overlay mini-container, idmapped volume, read-only
-sandbox, and `MOVE_MOUNT_BENEATH` atomic swap.
+sandbox with a writable tmpfs at `/tmp`, and `MOVE_MOUNT_BENEATH` atomic swap.
+Set `MOUNTFD_LANDLOCK=1` when running `readonly_sandbox.rb` with the optional
+`landlock` gem installed to restrict filesystem writes to `/tmp` (plus `/dev/null`)
+as defense in depth.
 
 ## Development
 

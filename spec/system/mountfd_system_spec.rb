@@ -162,6 +162,28 @@ RSpec.describe "Mountfd system", :system do
     end
   end
 
+  it "keeps tmp writable inside a read-only sandbox" do
+    require_mount_setattr
+
+    Dir.mktmpdir do |directory|
+      source = File.join(directory, "source")
+      target = File.join(directory, "target")
+      sandbox_tmp = File.join(target, "tmp")
+      FileUtils.mkdir_p([source, target])
+      Mountfd.mount("tmpfs", source)
+      FileUtils.mkdir_p(File.join(source, "tmp"))
+      Mountfd.bind(source, target, recursive: true)
+      Mountfd.set_attributes(target, attrs: {rdonly: true}, recursive: true)
+      Mountfd.mount("tmpfs", sandbox_tmp, attrs: {nosuid: true, nodev: true})
+
+      expect { File.write(File.join(target, "blocked"), "no") }.to raise_error(Errno::EROFS)
+      File.write(File.join(sandbox_tmp, "allowed"), "yes")
+      expect(File.read(File.join(sandbox_tmp, "allowed"))).to eq("yes")
+    ensure
+      unmount(sandbox_tmp, target, source)
+    end
+  end
+
   it "changes mount propagation" do
     require_mount_setattr
 
