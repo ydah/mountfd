@@ -173,7 +173,7 @@ module Mountfd
 
       values = [:new_mount_api]
       values.concat([:mount_setattr, :idmap]) if Native.syscall_available?("mount_setattr")
-      values << :statmount if Native.syscall_available?("statmount")
+      values << :statmount if %w[statmount listmount].all? { Native.syscall_available?(_1) }
       values << :move_mount_beneath if kernel_at_least?(6, 5)
       values << :create_excl if kernel_at_least?(6, 6)
       values

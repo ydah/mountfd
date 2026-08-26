@@ -13,6 +13,15 @@ RSpec.describe Mountfd do
     expect(Mountfd.supported?).to be(false) unless RUBY_PLATFORM.include?("linux")
   end
 
+  it "requires both mount enumeration syscalls" do
+    availability = Hash.new(false).merge("fsopen" => true, "statmount" => true)
+    allow(Mountfd::Native).to receive(:syscall_available?) { availability[_1] }
+
+    expect(Mountfd.features).not_to include(:statmount)
+    availability["listmount"] = true
+    expect(Mountfd.features).to include(:statmount)
+  end
+
   it "parses kernel diagnostics" do
     diagnostics = Mountfd::Diagnostic.parse("e bad option\nw deprecated\ni note\nunknown\n")
 
