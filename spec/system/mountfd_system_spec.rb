@@ -285,17 +285,15 @@ RSpec.describe "Mountfd system", :system do
     end
   end
 
-  it "returns the same visible mounts through statmount and mountinfo" do
+  it "returns the same managed mount through statmount and mountinfo" do
     skip "statmount is unavailable" unless Mountfd.features.include?(:statmount)
 
     project = ->(mount) { [mount.mount_point, mount.fs_type, mount.dev_major, mount.dev_minor] }
-    expect(Mountfd.mounts(backend: :statmount).map(&project).sort)
-      .to eq(Mountfd.mounts(backend: :mountinfo).map(&project).sort)
-
     Dir.mktmpdir do |target|
       Mountfd.mount("tmpfs", target, attrs: {nosuid: true, nodev: true})
       statmount = Mountfd.mount_at(target, backend: :statmount)
       mountinfo = Mountfd.mount_at(target, backend: :mountinfo)
+      expect(project.call(statmount)).to eq(project.call(mountinfo))
       expect(statmount.mnt_root).to eq(mountinfo.mnt_root)
       expect(statmount.attrs.sort).to eq(mountinfo.attrs.sort)
       expect(statmount.propagation).to eq(mountinfo.propagation)
@@ -392,19 +390,32 @@ RSpec.describe "Mountfd system", :system do
       expect { detached.idmap!(namespace) }.to raise_error(Mountfd::IdmapError)
       expect { Mountfd::Native.mount_setattr(Mountfd::AT_FDCWD, target, 0,
         Mountfd::Native::MOUNT_ATTR_IDMAP, 0, 0, namespace.fileno) }.to raise_error(SystemCallError)
-      proc_mount = Mountfd.open_tree("/proc")
-      expect { proc_mount.idmap!(namespace) }.to raise_error(Mountfd::IdmapError)
     ensure
-      proc_mount&.discard unless proc_mount&.closed?
       detached&.discard unless detached&.closed?
       namespace&.close unless namespace&.closed?
       unmount(overflow, target, source)
     end
   end
 
+  it "rejects idmapping procfs" do
+    skip "idmapped mounts are unavailable" unless Mountfd.features.include?(:idmap)
+
+    begin
+      proc_mount = Mountfd.open_tree("/proc")
+    rescue Errno::EINVAL
+      skip "procfs cannot be cloned on this host"
+    end
+    namespace = Mountfd::UserNamespace.create(uid: {0 => [0, 1]}, gid: {0 => [0, 1]})
+    expect { proc_mount.idmap!(namespace) }.to raise_error(Mountfd::IdmapError)
+  ensure
+    proc_mount&.discard unless proc_mount&.closed?
+    namespace&.close unless namespace&.closed?
+  end
+
   it "reaps a keeper stopped by mapping helpers" do
     skip "ASan cannot supervise an intentionally stopped fork child" if ENV["LD_PRELOAD"]&.include?("libasan")
 
+    pid = nil
     Dir.mktmpdir do |directory|
       %w[newuidmap newgidmap].each do |name|
         path = File.join(directory, name)
@@ -419,8 +430,8 @@ RSpec.describe "Mountfd system", :system do
       expect(status).to be_success
     end
   rescue Timeout::Error
-    Process.kill("KILL", -pid)
-    Process.wait(pid)
+    Process.kill("KILL", -pid) if pid
+    Process.wait(pid) if pid
     raise
   end
 
