@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "rbconfig"
+require "timeout"
 require "tmpdir"
 
 RSpec.describe "Mountfd system", :system do
@@ -398,6 +400,26 @@ RSpec.describe "Mountfd system", :system do
       namespace&.close unless namespace&.closed?
       unmount(overflow, target, source)
     end
+  end
+
+  it "reaps a keeper stopped by mapping helpers" do
+    Dir.mktmpdir do |directory|
+      %w[newuidmap newgidmap].each do |name|
+        path = File.join(directory, name)
+        File.write(path, "#!/bin/sh\nkill -STOP \"$1\"\nexit 0\n")
+        FileUtils.chmod(0o755, path)
+      end
+      pid = Process.spawn(
+        {"PATH" => "#{directory}:#{ENV.fetch("PATH", "")}"}, RbConfig.ruby, "-Ilib", "-rmountfd", "-e",
+        "Mountfd::UserNamespace.create(uid: {0 => 0}, gid: {0 => 0}, helper: true).close", pgroup: true
+      )
+      status = Timeout.timeout(5) { Process.wait2(pid).last }
+      expect(status).to be_success
+    end
+  rescue Timeout::Error
+    Process.kill("KILL", -pid)
+    Process.wait(pid)
+    raise
   end
 
   it "reports mount_setattr as unsupported on older kernels" do

@@ -108,7 +108,7 @@ static int configure_maps(pid_t pid, const char *uid_map, const char *gid_map, i
 static void stop_keeper(pid_t pid, int release_fd)
 {
     if (release_fd >= 0) close(release_fd);
-    else kill(pid, SIGKILL);
+    kill(pid, SIGKILL);
     while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
 }
 #endif
