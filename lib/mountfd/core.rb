@@ -12,7 +12,7 @@ module Mountfd
       raw.lines(chomp: true).filter_map do |line|
         prefix, separator, text = line.partition(" ")
         level = PREFIXES[prefix]
-        new(level || :info, separator.empty? ? line : text) unless line.empty?
+        new(level || :info, level && !separator.empty? ? text : line) unless line.empty?
       end
     end
 

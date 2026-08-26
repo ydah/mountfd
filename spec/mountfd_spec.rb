@@ -23,10 +23,10 @@ RSpec.describe Mountfd do
   end
 
   it "parses kernel diagnostics" do
-    diagnostics = Mountfd::Diagnostic.parse("e bad option\nw deprecated\ni note\nunknown\n")
+    diagnostics = Mountfd::Diagnostic.parse("e bad option\nw deprecated\ni note\nunknown\nfuture format\n")
 
-    expect(diagnostics.map(&:level)).to eq(%i[error warning info info])
-    expect(diagnostics.map(&:text)).to eq(["bad option", "deprecated", "note", "unknown"])
+    expect(diagnostics.map(&:level)).to eq(%i[error warning info info info])
+    expect(diagnostics.map(&:text)).to eq(["bad option", "deprecated", "note", "unknown", "future format"])
   end
 
   it "parses captured filesystem diagnostics" do
