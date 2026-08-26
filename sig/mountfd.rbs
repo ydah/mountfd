@@ -113,7 +113,7 @@ module Mountfd
   def self.pivot_root: (String new_root, String put_old) -> nil
   def self.set_attributes: (String path, ?attrs: Hash[Symbol, untyped], ?propagation: Symbol?, ?recursive: bool) -> nil
   def self.replace: (String path) { () -> DetachedMount } -> AttachedMount
-  def self.mounts: (?ns: (Integer | IO)?, ?backend: :statmount | :mountinfo) -> Array[MountInfo]
+  def self.mounts: (?ns: (Integer | _Fileno)?, ?backend: :statmount | :mountinfo) -> Array[MountInfo]
   def self.mounts_backend: () -> (:statmount | :mountinfo)
-  def self.mount_at: (String path, ?ns: (Integer | IO)?, ?backend: :statmount | :mountinfo) -> MountInfo?
+  def self.mount_at: (String path, ?ns: (Integer | _Fileno)?, ?backend: :statmount | :mountinfo) -> MountInfo?
 end

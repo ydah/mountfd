@@ -117,6 +117,45 @@ RSpec.describe "Mountfd system", :system do
     GC.stress = previous unless previous.nil?
   end
 
+  it "does not reuse a descriptor after close reports an error" do
+    context = Mountfd::FsContext.new("tmpfs")
+    IO.new(context.fileno).close
+
+    expect { context.close }.to raise_error(Errno::EBADF)
+    expect(context).to be_closed
+  ensure
+    context&.close unless context&.closed?
+  end
+
+  it "keeps coerced syscall arguments alive through GC compaction" do
+    skip "GC compaction is unavailable" unless GC.respond_to?(:compact)
+
+    string = Class.new do
+      def initialize(value) = @value = value
+      def to_str
+        GC.compact
+        @value.dup
+      end
+    end
+    integer = Class.new do
+      def initialize(value) = @value = value
+      def to_int
+        GC.compact
+        @value
+      end
+    end
+
+    20.times do
+      handle = Mountfd::Native.fsopen(string.new("tmpfs"), integer.new(Mountfd::Native::FSOPEN_CLOEXEC))
+      Mountfd::Native.fsconfig(
+        handle, integer.new(Mountfd::Native::FSCONFIG_SET_STRING),
+        string.new("size"), string.new("1M"), integer.new(0)
+      )
+    ensure
+      handle&.close unless handle&.closed?
+    end
+  end
+
   it "discards an unattached mount when its fd closes" do
     detached = Mountfd::FsContext.open("tmpfs") do |context|
       context.create!
@@ -172,8 +211,7 @@ RSpec.describe "Mountfd system", :system do
       FileUtils.mkdir_p([source, target])
       Mountfd.mount("tmpfs", source)
       FileUtils.mkdir_p(File.join(source, "tmp"))
-      Mountfd.bind(source, target, recursive: true)
-      Mountfd.set_attributes(target, attrs: {rdonly: true}, recursive: true)
+      Mountfd.bind(source, target, recursive: true, attrs: {rdonly: true})
       Mountfd.mount("tmpfs", sandbox_tmp, attrs: {nosuid: true, nodev: true})
 
       expect { File.write(File.join(target, "blocked"), "no") }.to raise_error(Errno::EROFS)
@@ -197,6 +235,29 @@ RSpec.describe "Mountfd system", :system do
       expect(mountinfo(target).propagation).not_to include(:shared)
     ensure
       unmount(target)
+    end
+  end
+
+  it "joins mount propagation peer groups" do
+    skip "MOVE_MOUNT_SET_GROUP requires Linux 5.15 or newer" unless kernel_at_least?(5, 15)
+
+    Dir.mktmpdir do |directory|
+      source = File.join(directory, "source")
+      target = File.join(directory, "target")
+      FileUtils.mkdir_p([source, target])
+      Mountfd.mount("tmpfs", source)
+      Mountfd.bind(source, target)
+      Mountfd.set_attributes(source, propagation: :shared)
+      expect(mountinfo(target).propagation).not_to include(:shared)
+
+      Mountfd::Native.move_mount(
+        Mountfd::AT_FDCWD, source, Mountfd::AT_FDCWD, target,
+        Mountfd::Native::MOVE_MOUNT_SET_GROUP
+      )
+
+      expect(mountinfo(target).propagation[:shared]).to eq(mountinfo(source).propagation[:shared])
+    ensure
+      unmount(target, source)
     end
   end
 

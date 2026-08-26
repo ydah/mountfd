@@ -79,7 +79,12 @@ static int run_map_helper(const char *program, pid_t pid, const char *mapping)
         execvp(program, arguments);
         _exit(127);
     }
-    if (helper < 0 || waitpid(helper, &status, 0) < 0) {
+    if (helper < 0) {
+        int error = errno;
+        free(arguments); free(copy); errno = error; return -1;
+    }
+    while (waitpid(helper, &status, 0) < 0) {
+        if (errno == EINTR) continue;
         int error = errno;
         free(arguments); free(copy); errno = error; return -1;
     }
@@ -119,7 +124,9 @@ static void stop_keeper(pid_t pid, int release_fd)
 static VALUE native_open_handle(VALUE self, VALUE path)
 {
 #ifdef __linux__
-    int fd = open(StringValueCStr(path), O_RDONLY | O_CLOEXEC);
+    const char *raw_path = StringValueCStr(path);
+    int fd = open(raw_path, O_RDONLY | O_CLOEXEC);
+    RB_GC_GUARD(path);
     if (fd < 0) rb_sys_fail_str(path);
     return mountfd_wrap_fd(fd);
 #else
@@ -132,12 +139,16 @@ static VALUE native_open_handle(VALUE self, VALUE path)
 static VALUE native_user_namespace(VALUE self, VALUE uid_value, VALUE gid_value, VALUE helper_value)
 {
 #ifdef __linux__
-    const char *uid_map = StringValueCStr(uid_value);
-    const char *gid_map = StringValueCStr(gid_value);
+    const char *uid_map, *gid_map;
     int ready[2], release[2], child_error = 0, namespace_fd = -1;
     pid_t pid;
     char path[64], byte;
     ssize_t length;
+
+    StringValueCStr(uid_value);
+    StringValueCStr(gid_value);
+    uid_map = RSTRING_PTR(uid_value);
+    gid_map = RSTRING_PTR(gid_value);
 
     if (pipe2(ready, O_CLOEXEC) < 0) rb_sys_fail("pipe2");
     if (pipe2(release, O_CLOEXEC) < 0) {
@@ -176,6 +187,8 @@ static VALUE native_user_namespace(VALUE self, VALUE uid_value, VALUE gid_value,
         stop_keeper(pid, -1); close(release[1]); errno = error; rb_sys_fail("open user namespace");
     }
     stop_keeper(pid, release[1]);
+    RB_GC_GUARD(uid_value);
+    RB_GC_GUARD(gid_value);
     return mountfd_wrap_fd(namespace_fd);
 #else
     VALUE mountfd = rb_const_get(rb_cObject, rb_intern("Mountfd"));

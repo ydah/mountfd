@@ -38,7 +38,15 @@
 #  define SYS_listmount 458
 # endif
 # ifndef SYS_pivot_root
-#  define SYS_pivot_root 155
+#  ifdef __NR_pivot_root
+#   define SYS_pivot_root __NR_pivot_root
+#  elif defined(__x86_64__)
+#   define SYS_pivot_root 155
+#  elif defined(__aarch64__)
+#   define SYS_pivot_root 41
+#  else
+#   error "SYS_pivot_root is unavailable for this architecture"
+#  endif
 # endif
 
 # ifndef FSOPEN_CLOEXEC

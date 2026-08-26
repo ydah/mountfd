@@ -45,6 +45,43 @@ RSpec.describe Mountfd do
     context.set_binary(:blob, "a\0b")
   end
 
+  it "preserves diagnostics from successful configuration" do
+    handle = instance_double(Mountfd::Native::Handle)
+    context = Mountfd::FsContext.new(nil, handle: handle)
+    allow(Mountfd::Native).to receive(:fsconfig)
+    allow(Mountfd::Native).to receive(:read_diagnostics).and_return("w adjusted option\n")
+
+    context.set("size", "1M")
+
+    expect(context.warnings.map(&:text)).to eq(["adjusted option"])
+  end
+
+  it "assembles lifecycle flags" do
+    context_handle = instance_double(Mountfd::Native::Handle, close: nil, closed?: false)
+    picked_handle = instance_double(Mountfd::Native::Handle, close: nil)
+    mount_handle = instance_double(Mountfd::Native::Handle, close: nil, closed?: false)
+    expect(Mountfd::Native).to receive(:fsopen)
+      .with("tmpfs", Mountfd::Native::FSOPEN_CLOEXEC | 8).and_return(context_handle)
+    allow(Mountfd::Native).to receive(:read_diagnostics).and_return("")
+    expect(Mountfd::Native).to receive(:fsmount)
+      .with(context_handle, Mountfd::Native::FSMOUNT_CLOEXEC, Mountfd::Native::MOUNT_ATTR_NOSUID)
+      .and_return(mount_handle)
+    expect(Mountfd::Native).to receive(:fspick)
+      .with(Mountfd::AT_FDCWD, "/existing", Mountfd::Native::FSPICK_CLOEXEC | 4)
+      .and_return(picked_handle)
+    expect(Mountfd::Native).to receive(:move_mount).with(
+      mount_handle, "", Mountfd::AT_FDCWD, "/target",
+      Mountfd::Native::MOVE_MOUNT_F_EMPTY_PATH | Mountfd::Native::MOVE_MOUNT_BENEATH
+    )
+    expect(Mountfd::Native).to receive(:umount2).with("/target", 3)
+
+    context = Mountfd::FsContext.new("tmpfs", flags: 8)
+    context.mount(attrs: {nosuid: true}).attach("/target", beneath: true)
+    Mountfd::FsContext.pick("/existing", flags: 4).close
+    Mountfd.umount("/target", detach: true, force: true)
+    context.close
+  end
+
   it "normalizes atime attributes" do
     set, clear = Mountfd::Attributes.build(rdonly: true, atime: :noatime)
 
@@ -72,6 +109,8 @@ RSpec.describe Mountfd do
     expect { Mountfd::UserNamespace.normalize(2**32 => 0) }.to raise_error(ArgumentError)
     expect { Mountfd::UserNamespace.normalize([[0, 1_000, 2], [1, 2_000, 1]]) }
       .to raise_error(ArgumentError, /overlapping inside/)
+    expect { Mountfd::UserNamespace.normalize([[0, 1_000, 2], [10, 1_001, 1]]) }
+      .to raise_error(ArgumentError, /overlapping outside/)
     expect { Mountfd::UserNamespace.create(helper: :sometimes) }.to raise_error(ArgumentError)
   end
 

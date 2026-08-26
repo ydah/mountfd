@@ -19,6 +19,7 @@ static VALUE mMountfd, mNative, cHandle, eError, eUnsupported;
 static void handle_free(void *ptr)
 {
     mountfd_handle *handle = ptr;
+    if (!handle) return;
     if (handle->fd >= 0) close(handle->fd);
     xfree(handle);
 }
@@ -75,10 +76,12 @@ static VALUE handle_fileno(VALUE self)
 static VALUE handle_close(VALUE self)
 {
     mountfd_handle *handle;
+    int fd;
     TypedData_Get_Struct(self, mountfd_handle, &handle_type, handle);
     if (handle->fd >= 0) {
-        if (close(handle->fd) < 0) rb_sys_fail("close");
+        fd = handle->fd;
         handle->fd = -1;
+        if (close(fd) < 0) rb_sys_fail("close");
     }
     return Qnil;
 }
@@ -102,14 +105,28 @@ static void unavailable(void)
 
 void mountfd_syscall_failed(const char *name)
 {
-    if (errno == ENOSYS || errno == EOPNOTSUPP)
+    int error = errno;
+    if (error == ENOSYS || error == EOPNOTSUPP)
         rb_raise(eUnsupported, "%s is not supported by this kernel or filesystem", name);
-    if (errno == EPERM)
-        rb_exc_raise(rb_syserr_new_str(errno, rb_sprintf(
+    if (error == EPERM)
+        rb_exc_raise(rb_syserr_new_str(error, rb_sprintf(
             "%s (insufficient privilege or operation disallowed in this namespace)", name
         )));
-    rb_syserr_fail(errno, name);
+    rb_syserr_fail(error, name);
 }
+
+#ifdef __linux__
+static void set_nonblocking_or_close(int fd)
+{
+    int flags = fcntl(fd, F_GETFL);
+    if (flags >= 0 && fcntl(fd, F_SETFL, flags | O_NONBLOCK) >= 0) return;
+
+    int error = errno;
+    close(fd);
+    errno = error;
+    rb_sys_fail("fcntl");
+}
+#endif
 
 static VALUE native_linux_p(VALUE self)
 {
@@ -146,14 +163,12 @@ static VALUE native_syscall_available(VALUE self, VALUE name)
 static VALUE native_fsopen(VALUE self, VALUE fsname, VALUE flags)
 {
 #ifdef __linux__
-    int fd = (int)syscall(SYS_fsopen, StringValueCStr(fsname), NUM2UINT(flags));
+    unsigned int raw_flags = NUM2UINT(flags);
+    const char *name = StringValueCStr(fsname);
+    int fd = (int)syscall(SYS_fsopen, name, raw_flags);
+    RB_GC_GUARD(fsname);
     if (fd < 0) mountfd_syscall_failed("fsopen");
-    if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) < 0) {
-        int error = errno;
-        close(fd);
-        errno = error;
-        rb_sys_fail("fcntl");
-    }
+    set_nonblocking_or_close(fd);
     return mountfd_wrap_fd(fd);
 #else
     unavailable(); return Qnil;
@@ -164,14 +179,28 @@ static VALUE native_fsconfig(VALUE self, VALUE handle, VALUE command, VALUE key,
                              VALUE value, VALUE aux)
 {
 #ifdef __linux__
+    int fd = fd_from(handle);
     unsigned int cmd = NUM2UINT(command);
-    const char *key_ptr = NIL_P(key) ? NULL : StringValueCStr(key);
+    int raw_aux = NUM2INT(aux);
+    const char *key_ptr;
     const void *value_ptr;
+    if (!NIL_P(key)) StringValueCStr(key);
+    if (!NIL_P(value)) {
+        if (cmd == FSCONFIG_SET_BINARY) StringValue(value);
+        else StringValueCStr(value);
+    }
+    key_ptr = NIL_P(key) ? NULL : RSTRING_PTR(key);
     if (NIL_P(value)) value_ptr = NULL;
-    else if (cmd == FSCONFIG_SET_BINARY) value_ptr = RSTRING_PTR(StringValue(value));
-    else value_ptr = StringValueCStr(value);
-    if (syscall(SYS_fsconfig, fd_from(handle), cmd, key_ptr, value_ptr, NUM2INT(aux)) < 0)
+    else value_ptr = RSTRING_PTR(value);
+    if (syscall(SYS_fsconfig, fd, cmd, key_ptr, value_ptr, raw_aux) < 0) {
+        int error = errno;
+        RB_GC_GUARD(key);
+        RB_GC_GUARD(value);
+        errno = error;
         mountfd_syscall_failed("fsconfig");
+    }
+    RB_GC_GUARD(key);
+    RB_GC_GUARD(value);
     return Qnil;
 #else
     unavailable(); return Qnil;
@@ -181,7 +210,10 @@ static VALUE native_fsconfig(VALUE self, VALUE handle, VALUE command, VALUE key,
 static VALUE native_fsmount(VALUE self, VALUE handle, VALUE flags, VALUE attrs)
 {
 #ifdef __linux__
-    int fd = (int)syscall(SYS_fsmount, fd_from(handle), NUM2UINT(flags), NUM2UINT(attrs));
+    int context_fd = fd_from(handle);
+    unsigned int raw_flags = NUM2UINT(flags);
+    unsigned int raw_attrs = NUM2UINT(attrs);
+    int fd = (int)syscall(SYS_fsmount, context_fd, raw_flags, raw_attrs);
     if (fd < 0) mountfd_syscall_failed("fsmount");
     return mountfd_wrap_fd(fd);
 #else
@@ -192,12 +224,13 @@ static VALUE native_fsmount(VALUE self, VALUE handle, VALUE flags, VALUE attrs)
 static VALUE native_fspick(VALUE self, VALUE dfd, VALUE path, VALUE flags)
 {
 #ifdef __linux__
-    int fd = (int)syscall(SYS_fspick, NUM2INT(dfd), StringValueCStr(path), NUM2UINT(flags));
+    int directory_fd = NUM2INT(dfd);
+    unsigned int raw_flags = NUM2UINT(flags);
+    const char *raw_path = StringValueCStr(path);
+    int fd = (int)syscall(SYS_fspick, directory_fd, raw_path, raw_flags);
+    RB_GC_GUARD(path);
     if (fd < 0) mountfd_syscall_failed("fspick");
-    if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) < 0) {
-        int error = errno;
-        close(fd); errno = error; rb_sys_fail("fcntl");
-    }
+    set_nonblocking_or_close(fd);
     return mountfd_wrap_fd(fd);
 #else
     unavailable(); return Qnil;
@@ -207,7 +240,11 @@ static VALUE native_fspick(VALUE self, VALUE dfd, VALUE path, VALUE flags)
 static VALUE native_open_tree(VALUE self, VALUE dfd, VALUE path, VALUE flags)
 {
 #ifdef __linux__
-    int fd = (int)syscall(SYS_open_tree, NUM2INT(dfd), StringValueCStr(path), NUM2UINT(flags));
+    int directory_fd = NUM2INT(dfd);
+    unsigned int raw_flags = NUM2UINT(flags);
+    const char *raw_path = StringValueCStr(path);
+    int fd = (int)syscall(SYS_open_tree, directory_fd, raw_path, raw_flags);
+    RB_GC_GUARD(path);
     if (fd < 0) mountfd_syscall_failed("open_tree");
     return mountfd_wrap_fd(fd);
 #else
@@ -219,9 +256,23 @@ static VALUE native_move_mount(VALUE self, VALUE from_dfd, VALUE from_path,
                                VALUE to_dfd, VALUE to_path, VALUE flags)
 {
 #ifdef __linux__
-    if (syscall(SYS_move_mount, fd_from(from_dfd), StringValueCStr(from_path),
-                NUM2INT(to_dfd), StringValueCStr(to_path), NUM2UINT(flags)) < 0)
+    int source_fd = fd_from(from_dfd);
+    int target_fd = NUM2INT(to_dfd);
+    unsigned int raw_flags = NUM2UINT(flags);
+    const char *source_path, *target_path;
+    StringValueCStr(from_path);
+    StringValueCStr(to_path);
+    source_path = RSTRING_PTR(from_path);
+    target_path = RSTRING_PTR(to_path);
+    if (syscall(SYS_move_mount, source_fd, source_path, target_fd, target_path, raw_flags) < 0) {
+        int error = errno;
+        RB_GC_GUARD(from_path);
+        RB_GC_GUARD(to_path);
+        errno = error;
         mountfd_syscall_failed("move_mount");
+    }
+    RB_GC_GUARD(from_path);
+    RB_GC_GUARD(to_path);
     return Qnil;
 #else
     unavailable(); return Qnil;
@@ -233,12 +284,21 @@ static VALUE native_mount_setattr(VALUE self, VALUE dfd, VALUE path, VALUE flags
                                   VALUE userns_fd)
 {
 #ifdef __linux__
+    int directory_fd = fd_from(dfd);
+    unsigned int raw_flags = NUM2UINT(flags);
     struct mount_attr attr = {
         NUM2ULL(attr_set), NUM2ULL(attr_clr), NUM2ULL(propagation),
         NIL_P(userns_fd) ? 0 : (uint64_t)fd_from(userns_fd)
     };
-    if (syscall(SYS_mount_setattr, fd_from(dfd), StringValueCStr(path), NUM2UINT(flags),
-                &attr, MOUNT_ATTR_SIZE_VER0) < 0) mountfd_syscall_failed("mount_setattr");
+    const char *raw_path = StringValueCStr(path);
+    if (syscall(SYS_mount_setattr, directory_fd, raw_path, raw_flags,
+                &attr, MOUNT_ATTR_SIZE_VER0) < 0) {
+        int error = errno;
+        RB_GC_GUARD(path);
+        errno = error;
+        mountfd_syscall_failed("mount_setattr");
+    }
+    RB_GC_GUARD(path);
     return Qnil;
 #else
     unavailable(); return Qnil;
@@ -248,7 +308,15 @@ static VALUE native_mount_setattr(VALUE self, VALUE dfd, VALUE path, VALUE flags
 static VALUE native_umount2(VALUE self, VALUE path, VALUE flags)
 {
 #ifdef __linux__
-    if (umount2(StringValueCStr(path), NUM2INT(flags)) < 0) mountfd_syscall_failed("umount2");
+    int raw_flags = NUM2INT(flags);
+    const char *raw_path = StringValueCStr(path);
+    if (umount2(raw_path, raw_flags) < 0) {
+        int error = errno;
+        RB_GC_GUARD(path);
+        errno = error;
+        mountfd_syscall_failed("umount2");
+    }
+    RB_GC_GUARD(path);
     return Qnil;
 #else
     unavailable(); return Qnil;
@@ -259,9 +327,10 @@ static VALUE native_read_diagnostics(VALUE self, VALUE handle)
 {
 #ifdef __linux__
     char buffer[4096];
+    int fd = fd_from(handle);
     VALUE output = rb_str_new(NULL, 0);
     ssize_t length;
-    while ((length = read(fd_from(handle), buffer, sizeof(buffer))) > 0)
+    while ((length = read(fd, buffer, sizeof(buffer))) > 0)
         rb_str_cat(output, buffer, length);
     if (length < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != ENODATA)
         rb_sys_fail("read(fs_context)");
