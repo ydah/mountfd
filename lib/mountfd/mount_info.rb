@@ -10,10 +10,10 @@ module Mountfd
   end
 
   module MountInfoParser
-    ESCAPE = /\\([0-7]{3})/
+    ESCAPE = /\\([0-3][0-7]{2})/
 
     def self.parse(content)
-      content.lines.filter_map { parse_line(_1) }
+      content.b.lines.filter_map { parse_line(_1) }
     end
 
     def self.parse_line(line)
@@ -35,7 +35,9 @@ module Mountfd
       nil
     end
 
-    def self.decode(value) = value.gsub(ESCAPE) { Regexp.last_match(1).to_i(8).chr }
+    def self.decode(value)
+      value.gsub(ESCAPE) { Regexp.last_match(1).to_i(8).chr(Encoding::BINARY) }
+    end
 
     def self.parse_propagation(fields)
       propagation = fields.filter_map do |field|

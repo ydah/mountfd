@@ -145,6 +145,12 @@ RSpec.describe Mountfd do
     expect(mount).to be_readonly
   end
 
+  it "preserves non-UTF-8 mount paths" do
+    line = "43 21 0:1 / /mnt/\xff rw - tmpfs tmpfs rw\n".dup.force_encoding(Encoding::UTF_8)
+
+    expect(Mountfd::MountInfoParser.parse(line).fetch(0).mount_point).to eq("/mnt/\xff".b)
+  end
+
   it "ignores unknown and malformed mountinfo fields" do
     future = "42 21 8:1 / /mnt rw shared:7 future:value unbindable - ext4 /dev/a rw\n"
     malformed = "42 21 broken / /mnt rw - ext4 /dev/a rw\n"
