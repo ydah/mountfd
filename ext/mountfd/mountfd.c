@@ -144,6 +144,7 @@ static VALUE native_syscall_available(VALUE self, VALUE name)
     long result;
     if (strcmp(value, "fsopen") == 0) {
         result = syscall(SYS_fsopen, "__mountfd_probe__", FSOPEN_CLOEXEC);
+        if (result >= 0) close((int)result);
     } else if (strcmp(value, "mount_setattr") == 0) {
         result = syscall(SYS_mount_setattr, -1, "", 0, NULL, 0);
     } else if (strcmp(value, "statmount") == 0) {
@@ -153,7 +154,6 @@ static VALUE native_syscall_available(VALUE self, VALUE name)
     } else {
         rb_raise(rb_eArgError, "unknown syscall: %s", value);
     }
-    if (result >= 0) close((int)result);
     return result >= 0 || errno != ENOSYS ? Qtrue : Qfalse;
 #else
     return Qfalse;
