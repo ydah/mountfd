@@ -80,6 +80,19 @@ RSpec.describe Mountfd do
     end
   end
 
+  it "closes a detached mount when diagnostic draining fails" do
+    context_handle = instance_double(Mountfd::Native::Handle)
+    mount_handle = instance_double(Mountfd::Native::Handle)
+    context = Mountfd::FsContext.new(nil, handle: context_handle)
+    allow(Mountfd::Native).to receive(:fsmount).and_return(mount_handle)
+    allow(Mountfd::Native).to receive(:read_diagnostics).and_raise(Errno::EIO)
+    expect(mount_handle).to receive(:close)
+
+    expect { context.mount }.to raise_error(Mountfd::MountError) do |error|
+      expect(error.cause).to be_a(Errno::EIO)
+    end
+  end
+
   it "assembles lifecycle flags" do
     context_handle = instance_double(Mountfd::Native::Handle, close: nil, closed?: false)
     picked_handle = instance_double(Mountfd::Native::Handle, close: nil)

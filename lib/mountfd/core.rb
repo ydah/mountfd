@@ -97,6 +97,11 @@ module Mountfd
       result
     rescue SystemCallError => error
       begin
+        result.close if result.respond_to?(:close)
+      rescue SystemCallError
+        nil
+      end
+      begin
         drain_diagnostics
       rescue SystemCallError
         nil

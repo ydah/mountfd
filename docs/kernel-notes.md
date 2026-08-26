@@ -21,7 +21,7 @@ Results recorded on 2026-08-25 and 2026-08-26 while implementing the initial rel
 | Linux 6.8.0-64 arm64, non-root | `newuidmap`/`newgidmap` create a namespace fd with delegated `100000:65536` sub-ID ranges. |
 | Linux 6.8.0-64 arm64 | Safe source-free idmap probe: tmpfs yes; ramfs and hugetlbfs no/unavailable. |
 | Linux 6.8.0-64 arm64 | 1000-mount benchmark, 10 iterations: statmount/listmount 30 ms; mountinfo parse 37 ms. |
-| Linux 6.8.0-64 arm64, Ruby 3.4 | Adversarial suite: 22 examples, 0 failures, 2 expected pending. |
+| Linux 6.8.0-64 arm64, Ruby 3.4 | Adversarial suite: 23 examples, 0 failures, 2 expected pending. |
 | Linux 6.8.0-64 arm64, Ruby 3.4, ASan/UBSan | Unit and system suites plus repeated syscall/GC-compaction stress pass without sanitizer findings. |
 | Linux 5.10.0 arm64, virtme-ng/QEMU | System suite: 21 examples, 0 failures, 13 expected pending; `mount_setattr` and exclusive creation report `UnsupportedError`. |
 | Linux 5.15.0 arm64, virtme-ng/QEMU | System suite: 21 examples, 0 failures, 8 expected pending; `MOVE_MOUNT_SET_GROUP` and ext4 loopback idmap pass. |
