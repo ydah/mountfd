@@ -31,7 +31,7 @@ static size_t handle_size(const void *ptr)
 
 static const rb_data_type_t handle_type = {
     "Mountfd::Native::Handle",
-    {NULL, handle_free, handle_size, NULL},
+    {NULL, handle_free, handle_size, NULL, {NULL}},
     NULL, NULL, RUBY_TYPED_FREE_IMMEDIATELY | RUBY_TYPED_WB_PROTECTED
 };
 

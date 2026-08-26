@@ -8,7 +8,13 @@ module Mountfd
       return if ENV["MOUNTFD_IN_USERNS"]
       raise UnsupportedError, "user namespaces are unavailable on this platform" unless Native.linux?
 
-      exec({"MOUNTFD_IN_USERNS" => "1"}, "unshare", "-Ur", RbConfig.ruby, $PROGRAM_NAME, *ARGV)
+      command = begin
+        File.binread("/proc/self/cmdline").split("\0")
+      rescue Errno::EACCES, Errno::ENOENT
+        []
+      end
+      command = [RbConfig.ruby, $PROGRAM_NAME, *ARGV] if command.empty?
+      exec({"MOUNTFD_IN_USERNS" => "1"}, "unshare", "-Ur", *command)
     end
 
     def self.unshare_mount!(propagation: :private)

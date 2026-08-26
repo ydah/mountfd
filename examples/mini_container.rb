@@ -2,7 +2,6 @@
 
 require "fileutils"
 require "mountfd"
-require "rbconfig"
 require "tmpdir"
 
 lower = File.expand_path(ARGV.fetch(0) { abort "usage: #{$PROGRAM_NAME} ROOTFS [COMMAND ...]" })
@@ -13,7 +12,8 @@ Mountfd::Namespace.reexec_user!
 directory = ENV["MOUNTFD_CONTAINER_ROOT"]
 unless directory
   status = Dir.mktmpdir("mountfd-container") do |root|
-    pid = Process.spawn({"MOUNTFD_CONTAINER_ROOT" => root}, RbConfig.ruby, $PROGRAM_NAME, *ARGV)
+    command = File.binread("/proc/self/cmdline").split("\0")
+    pid = Process.spawn({"MOUNTFD_CONTAINER_ROOT" => root}, *command)
     Process.wait2(pid).last
   end
   exit(status.exitstatus || 128 + status.termsig)

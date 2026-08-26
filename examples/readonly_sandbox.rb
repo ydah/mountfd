@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "mountfd"
-require "rbconfig"
 require "tmpdir"
 require "landlock" if ENV["MOUNTFD_LANDLOCK"] == "1"
 
@@ -14,7 +13,8 @@ Mountfd::Namespace.reexec_user!
 root = ENV["MOUNTFD_SANDBOX_ROOT"]
 unless root
   status = Dir.mktmpdir("mountfd-sandbox") do |directory|
-    pid = Process.spawn({"MOUNTFD_SANDBOX_ROOT" => directory}, RbConfig.ruby, $PROGRAM_NAME, *ARGV)
+    command = File.binread("/proc/self/cmdline").split("\0")
+    pid = Process.spawn({"MOUNTFD_SANDBOX_ROOT" => directory}, *command)
     Process.wait2(pid).last
   end
   exit(status.exitstatus || 128 + status.termsig)

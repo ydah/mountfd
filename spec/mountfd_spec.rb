@@ -244,6 +244,45 @@ RSpec.describe Mountfd do
     ENV["MOUNTFD_IN_USERNS"] = previous
   end
 
+  it "preserves the complete Ruby command when entering a user namespace" do
+    previous = ENV.delete("MOUNTFD_IN_USERNS")
+    allow(Mountfd::Native).to receive(:linux?).and_return(true)
+    allow(File).to receive(:binread).with("/proc/self/cmdline")
+      .and_return("/ruby\0-Ilib\0-rbundler/setup\0script.rb\0argument\0")
+    expect(Mountfd::Namespace).to receive(:exec).with(
+      {"MOUNTFD_IN_USERNS" => "1"}, "unshare", "-Ur",
+      "/ruby", "-Ilib", "-rbundler/setup", "script.rb", "argument"
+    )
+
+    Mountfd::Namespace.reexec_user!
+  ensure
+    ENV["MOUNTFD_IN_USERNS"] = previous
+  end
+
+  it "falls back when the current command is unavailable" do
+    previous = ENV.delete("MOUNTFD_IN_USERNS")
+    allow(Mountfd::Native).to receive(:linux?).and_return(true)
+    allow(File).to receive(:binread).with("/proc/self/cmdline").and_raise(Errno::ENOENT)
+    expect(Mountfd::Namespace).to receive(:exec).with(
+      {"MOUNTFD_IN_USERNS" => "1"}, "unshare", "-Ur", RbConfig.ruby, $PROGRAM_NAME, *ARGV
+    )
+
+    Mountfd::Namespace.reexec_user!
+  ensure
+    ENV["MOUNTFD_IN_USERNS"] = previous
+  end
+
+  it "does not retry a failed namespace exec" do
+    previous = ENV.delete("MOUNTFD_IN_USERNS")
+    allow(Mountfd::Native).to receive(:linux?).and_return(true)
+    allow(File).to receive(:binread).and_return("/ruby\0script.rb\0")
+    expect(Mountfd::Namespace).to receive(:exec).once.and_raise(Errno::ENOENT)
+
+    expect { Mountfd::Namespace.reexec_user! }.to raise_error(Errno::ENOENT)
+  ensure
+    ENV["MOUNTFD_IN_USERNS"] = previous
+  end
+
   it "requires a detached mount for atomic replacement" do
     expect { Mountfd.replace("/tmp") { nil } }.to raise_error(ArgumentError)
   end
