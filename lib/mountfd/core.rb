@@ -72,7 +72,10 @@ module Mountfd
     def reconfigure! = configure(Native::FSCONFIG_CMD_RECONFIGURE, nil, nil, 0)
 
     def mount(attrs: {})
-      attr_set, = Attributes.build(attrs)
+      attr_set, attr_clr = Attributes.build(attrs)
+      raise ArgumentError, "idmap must be applied to a detached mount with a user namespace" if
+        ((attr_set | attr_clr) & Native::MOUNT_ATTR_IDMAP).positive?
+
       handle = with_diagnostics("fsmount", MountError) do
         Native.fsmount(@handle, Native::FSMOUNT_CLOEXEC, attr_set)
       end
@@ -93,7 +96,11 @@ module Mountfd
       drain_diagnostics
       result
     rescue SystemCallError => error
-      drain_diagnostics
+      begin
+        drain_diagnostics
+      rescue SystemCallError
+        nil
+      end
       raise error_class.new("#{operation}: #{error.message}", diagnostics), cause: error
     end
 
@@ -115,8 +122,16 @@ module Mountfd
     def set_attributes(set: [], clr: [], propagation: nil, idmap: nil, recursive: false)
       flags = Native::AT_EMPTY_PATH
       flags |= Native::AT_RECURSIVE if recursive
+      set_flags = Attributes.flags(set)
+      clear_flags = Attributes.flags(clr)
+      has_idmap = (set_flags & Native::MOUNT_ATTR_IDMAP).positive?
+      raise ArgumentError, "an idmapped mount cannot be cleared" if
+        (clear_flags & Native::MOUNT_ATTR_IDMAP).positive?
+      raise ArgumentError, "MOUNT_ATTR_IDMAP and a user namespace must be provided together" if
+        has_idmap == idmap.nil?
+
       Native.mount_setattr(
-        @handle, "", flags, Attributes.flags(set), Attributes.flags(clr),
+        @handle, "", flags, set_flags, clear_flags,
         Attributes.propagation(propagation), idmap && Mountfd.fileno(idmap)
       )
       self
@@ -131,11 +146,13 @@ module Mountfd
       target = File.path(path)
       flags = Native::MOVE_MOUNT_F_EMPTY_PATH
       flags |= Native::MOVE_MOUNT_BENEATH if beneath
-      Native.move_mount(@handle, "", AT_FDCWD, target, flags)
+      begin
+        Native.move_mount(@handle, "", AT_FDCWD, target, flags)
+      rescue SystemCallError => error
+        raise MountError, "move_mount: #{error.message}", cause: error
+      end
       close
       AttachedMount.new(target)
-    rescue SystemCallError => error
-      raise MountError, "move_mount: #{error.message}", cause: error
     end
 
     def close
@@ -296,11 +313,16 @@ module Mountfd
 
     def mount_info_from_statmount(value)
       options = value[:options]&.split(",") || []
-      attrs = []
-      attrs << :rdonly if (value[:attrs] & Native::MOUNT_ATTR_RDONLY).positive?
-      attrs << :idmap if (value[:attrs] & Native::MOUNT_ATTR_IDMAP).positive?
+      attrs = Attributes::VALUES.filter_map do |name, flag|
+        name if (value[:attrs] & flag).positive?
+      end
+      Attributes::ATIME.each do |name, flag|
+        attrs << name if flag.positive? && (value[:attrs] & flag).positive?
+      end
       propagation = {}
-      Attributes::PROPAGATION.each { |name, flag| propagation[name] = true if value[:propagation] == flag }
+      Attributes::PROPAGATION.each do |name, flag|
+        propagation[name] = true if (value[:propagation] & flag).positive?
+      end
       propagation[:shared] = value[:peer_group] if value[:peer_group].positive?
       propagation[:master] = value[:master] if value[:master].positive?
       propagation[:propagate_from] = value[:propagate_from] if value[:propagate_from].positive?

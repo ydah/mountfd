@@ -169,6 +169,11 @@ RSpec.describe "Mountfd system", :system do
       )
     end.to raise_error(ArgumentError, /length/)
     expect { Mountfd::Native.fsopen("tmpfs\0suffix", 0) }.to raise_error(ArgumentError)
+    expect do
+      Mountfd::Native.mount_setattr(
+        Mountfd::AT_FDCWD, "/", 0, Mountfd::Native::MOUNT_ATTR_IDMAP, 0, 0, nil
+      )
+    end.to raise_error(ArgumentError, /user namespace/)
   ensure
     context&.close unless context&.closed?
   end
@@ -284,6 +289,17 @@ RSpec.describe "Mountfd system", :system do
     project = ->(mount) { [mount.mount_point, mount.fs_type, mount.dev_major, mount.dev_minor] }
     expect(Mountfd.mounts(backend: :statmount).map(&project).sort)
       .to eq(Mountfd.mounts(backend: :mountinfo).map(&project).sort)
+
+    Dir.mktmpdir do |target|
+      Mountfd.mount("tmpfs", target, attrs: {nosuid: true, nodev: true})
+      statmount = Mountfd.mount_at(target, backend: :statmount)
+      mountinfo = Mountfd.mount_at(target, backend: :mountinfo)
+      expect(statmount.mnt_root).to eq(mountinfo.mnt_root)
+      expect(statmount.attrs.sort).to eq(mountinfo.attrs.sort)
+      expect(statmount.propagation).to eq(mountinfo.propagation)
+    ensure
+      unmount(target)
+    end
   end
 
   it "enumerates a selected mount namespace through statmount" do

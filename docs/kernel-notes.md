@@ -16,6 +16,7 @@ Results recorded on 2026-08-25 and 2026-08-26 while implementing the initial rel
 | Linux 6.8.0-64 arm64 | 1000 explicit fd closes and `GC.stress` leave `/proc/self/fd` unchanged. |
 | Linux 6.8.0-64 arm64 | Recursive read-only, attribute set/clear, propagation, detached discard, and atomic replacement tests pass. |
 | Linux 6.8.0-64 arm64 | `MOVE_MOUNT_SET_GROUP`, close-error fd reuse, compacting-GC syscall arguments, and native binary-length validation pass. |
+| Linux 6.8.0-64 arm64 | Invalid idmap fd/flag pairs are rejected before the syscall; the helper path passes through `posix_spawnp`. |
 | Linux 6.8.0-64 arm64 | An ext4 loopback file owned by UID 1000 is UID 0 through an idmapped bind; an unmapped UID is 65534. |
 | Linux 6.8.0-64 arm64, non-root | `newuidmap`/`newgidmap` create a namespace fd with delegated `100000:65536` sub-ID ranges. |
 | Linux 6.8.0-64 arm64 | Safe source-free idmap probe: tmpfs yes; ramfs and hugetlbfs no/unavailable. |

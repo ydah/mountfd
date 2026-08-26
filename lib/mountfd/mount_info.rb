@@ -29,7 +29,7 @@ module Mountfd
         Integer(fields[0], 10), Integer(fields[1], 10), decode(fields[3]), decode(fields[4]),
         decode(fields[separator + 1]), decode(fields[separator + 2]),
         (mount_options + super_options).uniq.freeze, parse_propagation(optional),
-        parse_attrs(mount_options, optional), major, minor
+        parse_attrs(mount_options + super_options, optional), major, minor
       )
     rescue ArgumentError, TypeError
       nil
@@ -38,7 +38,7 @@ module Mountfd
     def self.decode(value) = value.gsub(ESCAPE) { Regexp.last_match(1).to_i(8).chr }
 
     def self.parse_propagation(fields)
-      fields.filter_map do |field|
+      propagation = fields.filter_map do |field|
         name, value = field.split(":", 2)
         case name
         when "shared", "master", "propagate_from"
@@ -46,14 +46,22 @@ module Mountfd
         when "unbindable"
           [:unbindable, true]
         end
-      end.to_h.freeze
+      end.to_h
+      propagation[:slave] = true if propagation.key?(:master)
+      propagation[:private] = true if propagation.empty?
+      propagation.freeze
     end
 
     def self.parse_attrs(options, optional)
-      values = []
-      values << :rdonly if options.include?("ro")
+      names = {
+        "ro" => :rdonly, "nosuid" => :nosuid, "nodev" => :nodev,
+        "noexec" => :noexec, "nodiratime" => :nodiratime,
+        "nosymfollow" => :nosymfollow, "noatime" => :noatime,
+        "strictatime" => :strictatime
+      }
+      values = options.filter_map { names[_1] }
       values << :idmap if optional.include?("idmapped")
-      values.freeze
+      values.uniq.freeze
     end
   end
 end

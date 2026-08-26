@@ -289,8 +289,16 @@ static VALUE native_mount_setattr(VALUE self, VALUE dfd, VALUE path, VALUE flags
 #ifdef __linux__
     int directory_fd = fd_from(dfd);
     unsigned int raw_flags = NUM2UINT(flags);
+    uint64_t raw_set = NUM2ULL(attr_set);
+    uint64_t raw_clr = NUM2ULL(attr_clr);
+    uint64_t raw_propagation = NUM2ULL(propagation);
+    int has_idmap = (raw_set & MOUNT_ATTR_IDMAP) != 0;
+    if ((raw_clr & MOUNT_ATTR_IDMAP) != 0)
+        rb_raise(rb_eArgError, "an idmapped mount cannot be cleared");
+    if ((has_idmap && NIL_P(userns_fd)) || (!has_idmap && !NIL_P(userns_fd)))
+        rb_raise(rb_eArgError, "MOUNT_ATTR_IDMAP and a user namespace fd must be provided together");
     struct mount_attr attr = {
-        NUM2ULL(attr_set), NUM2ULL(attr_clr), NUM2ULL(propagation),
+        raw_set, raw_clr, raw_propagation,
         NIL_P(userns_fd) ? 0 : (uint64_t)fd_from(userns_fd)
     };
     const char *raw_path = StringValueCStr(path);

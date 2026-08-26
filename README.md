@@ -156,6 +156,9 @@ The mountinfo fallback decodes octal path escapes and handles the variable
 optional-field section. A disappearing mount during `statmount` enumeration is
 ignored as a normal race. An open mount namespace descriptor can be passed on
 Linux 6.11 or newer; an integer namespace argument remains a process ID.
+Generic attributes and propagation are normalized across both backends.
+`source` or filesystem-specific `options` may be nil or empty when the running
+kernel does not return the corresponding statmount field.
 
 ## Namespace helpers
 

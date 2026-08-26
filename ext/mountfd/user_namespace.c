@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,6 +14,7 @@
 #include <unistd.h>
 #ifdef __linux__
 # include <sched.h>
+extern char **environ;
 #endif
 
 #ifdef __linux__
@@ -74,13 +76,8 @@ static int run_map_helper(const char *program, pid_t pid, const char *mapping)
     }
     arguments[count] = NULL;
 
-    helper = fork();
-    if (helper == 0) {
-        execvp(program, arguments);
-        _exit(127);
-    }
-    if (helper < 0) {
-        int error = errno;
+    int error = posix_spawnp(&helper, program, NULL, NULL, arguments, environ);
+    if (error != 0) {
         free(arguments); free(copy); errno = error; return -1;
     }
     while (waitpid(helper, &status, 0) < 0) {
@@ -110,13 +107,8 @@ static int configure_maps(pid_t pid, const char *uid_map, const char *gid_map, i
 
 static void stop_keeper(pid_t pid, int release_fd)
 {
-    char byte = 0;
-    if (release_fd >= 0) {
-        write_all(release_fd, &byte, 1);
-        close(release_fd);
-    } else {
-        kill(pid, SIGKILL);
-    }
+    if (release_fd >= 0) close(release_fd);
+    else kill(pid, SIGKILL);
     while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
 }
 #endif

@@ -56,6 +56,17 @@ RSpec.describe Mountfd do
     expect(context.warnings.map(&:text)).to eq(["adjusted option"])
   end
 
+  it "preserves operation errors when reading diagnostics also fails" do
+    handle = instance_double(Mountfd::Native::Handle)
+    context = Mountfd::FsContext.new(nil, handle: handle)
+    allow(Mountfd::Native).to receive(:fsconfig).and_raise(Errno::EBADF)
+    allow(Mountfd::Native).to receive(:read_diagnostics).and_raise(Errno::EIO)
+
+    expect { context.set("size", "1M") }.to raise_error(Mountfd::ConfigError) do |error|
+      expect(error.cause).to be_a(Errno::EBADF)
+    end
+  end
+
   it "assembles lifecycle flags" do
     context_handle = instance_double(Mountfd::Native::Handle, close: nil, closed?: false)
     picked_handle = instance_double(Mountfd::Native::Handle, close: nil)
@@ -89,6 +100,13 @@ RSpec.describe Mountfd do
     expect(clear).to eq(Mountfd::Native::MOUNT_ATTR__ATIME)
   end
 
+  it "rejects ambiguous mount attributes" do
+    expect { Mountfd::Attributes.build(rdonly: true, "rdonly" => false) }
+      .to raise_error(ArgumentError, /duplicate/)
+    expect { Mountfd::Attributes.build(atime: false) }.to raise_error(ArgumentError, /atime/)
+    expect { Mountfd::Attributes.propagation(false) }.to raise_error(ArgumentError, /propagation/)
+  end
+
   it "validates propagation names" do
     expect(Mountfd::Attributes.propagation(:private)).to eq(Mountfd::Native::MS_PRIVATE)
     expect { Mountfd::Attributes.propagation(:mystery) }.to raise_error(ArgumentError)
@@ -115,14 +133,15 @@ RSpec.describe Mountfd do
   end
 
   it "parses mountinfo escapes and optional fields" do
-    line = "42 21 8:1 /root\\040dir\\011tab /mnt\\040point\\012line rw,nosuid shared:7 master:2 - ext4 /dev/a\\134b ro,errors=remount-ro\n"
+    line = "42 21 8:1 /root\\040dir\\011tab /mnt\\040point\\012line ro,nosuid shared:7 master:2 - ext4 /dev/a\\134b ro,errors=remount-ro\n"
     mount = Mountfd::MountInfoParser.parse(line).fetch(0)
 
     expect(mount.mnt_id).to eq(42)
     expect(mount.mnt_root).to eq("/root dir\ttab")
     expect(mount.mount_point).to eq("/mnt point\nline")
     expect(mount.source).to eq("/dev/a\\b")
-    expect(mount.propagation).to eq(shared: 7, master: 2)
+    expect(mount.propagation).to eq(shared: 7, master: 2, slave: true)
+    expect(mount.attrs).to contain_exactly(:rdonly, :nosuid)
     expect(mount).to be_readonly
   end
 
@@ -169,6 +188,21 @@ RSpec.describe Mountfd do
     mount.discard
   end
 
+  it "requires an explicit user namespace for idmapped mounts" do
+    closed = false
+    handle = instance_double(Mountfd::Native::Handle)
+    allow(handle).to receive(:closed?) { closed }
+    allow(handle).to receive(:close) { closed = true }
+    mount = Mountfd::DetachedMount.new(handle)
+
+    expect { mount.set_attributes(set: [:idmap]) }.to raise_error(ArgumentError, /user namespace/)
+    expect { mount.set_attributes(clr: [:idmap]) }.to raise_error(ArgumentError, /cannot be cleared/)
+    expect { Mountfd::FsContext.new(nil, handle: handle).mount(attrs: {idmap: true}) }
+      .to raise_error(ArgumentError, /detached mount/)
+  ensure
+    mount&.discard unless mount&.closed?
+  end
+
   it "ignores malformed mountinfo lines" do
     expect(Mountfd::MountInfoParser.parse("not mountinfo\n")).to be_empty
   end
@@ -181,6 +215,7 @@ RSpec.describe Mountfd do
     mounts = Mountfd.mounts(backend: :mountinfo)
     expect(mounts.map(&:mnt_id)).to eq([41])
     expect(mounts.first).to be_readonly
+    expect(mounts.first.propagation).to eq(private: true)
   end
 
   it "passes mount namespace descriptors to statmount" do

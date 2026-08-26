@@ -25,9 +25,14 @@ module Mountfd
 
     def self.build(attributes)
       set = clr = 0
+      seen = {}
       attributes.each do |name, value|
-        if name.to_sym == :atime
-          mode = value.to_sym
+        key = name.respond_to?(:to_sym) ? name.to_sym : name
+        raise ArgumentError, "duplicate mount attribute: #{name.inspect}" if seen[key]
+
+        seen[key] = true
+        if key == :atime
+          mode = value.respond_to?(:to_sym) ? value.to_sym : value
           raise ArgumentError, "unknown atime mode: #{value.inspect}" unless ATIME.key?(mode)
 
           clr |= Native::MOUNT_ATTR__ATIME
@@ -35,7 +40,7 @@ module Mountfd
           next
         end
 
-        flag = VALUES.fetch(name.to_sym) { raise ArgumentError, "unknown mount attribute: #{name.inspect}" }
+        flag = VALUES.fetch(key) { raise ArgumentError, "unknown mount attribute: #{name.inspect}" }
         value ? set |= flag : clr |= flag
       end
       [set, clr]
@@ -45,14 +50,16 @@ module Mountfd
       return names if names.is_a?(Integer)
 
       Array(names).reduce(0) do |flags, name|
-        flags | VALUES.fetch(name.to_sym) { raise ArgumentError, "unknown mount attribute: #{name.inspect}" }
+        key = name.respond_to?(:to_sym) ? name.to_sym : name
+        flags | VALUES.fetch(key) { raise ArgumentError, "unknown mount attribute: #{name.inspect}" }
       end
     end
 
     def self.propagation(value)
       return 0 if value.nil?
 
-      PROPAGATION.fetch(value.to_sym) { raise ArgumentError, "unknown propagation: #{value.inspect}" }
+      key = value.respond_to?(:to_sym) ? value.to_sym : value
+      PROPAGATION.fetch(key) { raise ArgumentError, "unknown propagation: #{value.inspect}" }
     end
   end
 end
