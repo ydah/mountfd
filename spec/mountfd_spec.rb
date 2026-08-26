@@ -162,11 +162,17 @@ RSpec.describe Mountfd do
 
   it "ignores unknown and malformed mountinfo fields" do
     future = "42 21 8:1 / /mnt rw shared:7 future:value unbindable - ext4 /dev/a rw\n"
-    malformed = "42 21 broken / /mnt rw - ext4 /dev/a rw\n"
+    malformed = [
+      "42 21 broken / /mnt rw - ext4 /dev/a rw\n",
+      "42 21 8 / /mnt rw - ext4 /dev/a rw\n",
+      "42 21 -1:2 / /mnt rw - ext4 /dev/a rw\n",
+      "-1 21 8:1 / /mnt rw - ext4 /dev/a rw\n",
+      "42 21 4294967296:1 / /mnt rw - ext4 /dev/a rw\n"
+    ]
 
     expect(Mountfd::MountInfoParser.parse(future).fetch(0).propagation)
       .to eq(shared: 7, unbindable: true)
-    expect(Mountfd::MountInfoParser.parse(malformed)).to be_empty
+    malformed.each { expect(Mountfd::MountInfoParser.parse(_1)).to be_empty }
   end
 
   it "coerces an attachment path only before changing the mount tree" do

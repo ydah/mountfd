@@ -11,6 +11,8 @@ module Mountfd
 
   module MountInfoParser
     ESCAPE = /\\([0-3][0-7]{2})/
+    UINT32_MAX = 2**32 - 1
+    UINT64_MAX = 2**64 - 1
 
     def self.parse(content)
       content.b.lines.filter_map { parse_line(_1) }
@@ -21,12 +23,19 @@ module Mountfd
       separator = fields.index("-")
       return unless separator && separator >= 6 && fields.length >= separator + 4
 
-      major, minor = fields[2].split(":", 2).map { Integer(_1, 10) }
+      device = fields[2].split(":", -1)
+      return unless device.length == 2
+
+      mnt_id, parent_id = fields.first(2).map { Integer(_1, 10) }
+      major, minor = device.map { Integer(_1, 10) }
+      return unless mnt_id.between?(0, UINT64_MAX) && parent_id.between?(0, UINT64_MAX) &&
+        major.between?(0, UINT32_MAX) && minor.between?(0, UINT32_MAX)
+
       mount_options = fields[5].split(",")
       super_options = fields[separator + 3].split(",")
       optional = fields[6...separator]
       MountInfo.new(
-        Integer(fields[0], 10), Integer(fields[1], 10), decode(fields[3]), decode(fields[4]),
+        mnt_id, parent_id, decode(fields[3]), decode(fields[4]),
         decode(fields[separator + 1]), decode(fields[separator + 2]),
         (mount_options + super_options).uniq.freeze, parse_propagation(optional),
         parse_attrs(mount_options + super_options, optional), major, minor
