@@ -177,7 +177,9 @@ See `examples/` for an overlay mini-container, idmapped volume, read-only
 sandbox with a writable tmpfs at `/tmp`, and `MOVE_MOUNT_BENEATH` atomic swap.
 Set `MOUNTFD_LANDLOCK=1` when running `readonly_sandbox.rb` with the optional
 `landlock` gem installed to restrict filesystem writes to `/tmp` (plus `/dev/null`)
-as defense in depth.
+as defense in depth. The exec-based examples use a supervising parent so their
+temporary mount trees are removed after the command exits, including on a
+nonzero exit status.
 
 ## Development
 
