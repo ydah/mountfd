@@ -403,6 +403,8 @@ RSpec.describe "Mountfd system", :system do
   end
 
   it "reaps a keeper stopped by mapping helpers" do
+    skip "ASan cannot supervise an intentionally stopped fork child" if ENV["LD_PRELOAD"]&.include?("libasan")
+
     Dir.mktmpdir do |directory|
       %w[newuidmap newgidmap].each do |name|
         path = File.join(directory, name)
