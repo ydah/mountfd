@@ -2,6 +2,7 @@
 #include "mountfd.h"
 #include "compat.h"
 
+#ifdef __linux__
 #include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -9,7 +10,6 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-#ifdef __linux__
 #define MOUNTFD_STAT_SIZE 512
 #define MOUNTFD_STAT_MASK (STATMOUNT_SB_BASIC | STATMOUNT_MNT_BASIC | \
     STATMOUNT_PROPAGATE_FROM | STATMOUNT_MNT_ROOT | STATMOUNT_MNT_POINT | \

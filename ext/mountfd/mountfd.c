@@ -4,11 +4,17 @@
 #include "compat.h"
 #include "mountfd.h"
 
-#include <errno.h>
-#include <fcntl.h>
-#include <string.h>
-#include <unistd.h>
+#ifdef _WIN32
+# include <io.h>
+# define mountfd_close _close
+#else
+# include <unistd.h>
+# define mountfd_close close
+#endif
 #ifdef __linux__
+# include <errno.h>
+# include <fcntl.h>
+# include <string.h>
 # include <sys/mount.h>
 #endif
 
@@ -20,7 +26,7 @@ static void handle_free(void *ptr)
 {
     mountfd_handle *handle = ptr;
     if (!handle) return;
-    if (handle->fd >= 0) close(handle->fd);
+    if (handle->fd >= 0) mountfd_close(handle->fd);
     xfree(handle);
 }
 
@@ -81,7 +87,7 @@ static VALUE handle_close(VALUE self)
     if (handle->fd >= 0) {
         fd = handle->fd;
         handle->fd = -1;
-        if (close(fd) < 0) rb_sys_fail("close");
+        if (mountfd_close(fd) < 0) rb_sys_fail("close");
     }
     return Qnil;
 }
@@ -103,6 +109,7 @@ static void unavailable(void)
 }
 #endif
 
+#ifdef __linux__
 void mountfd_syscall_failed(const char *name)
 {
     int error = errno;
@@ -115,14 +122,13 @@ void mountfd_syscall_failed(const char *name)
     rb_syserr_fail(error, name);
 }
 
-#ifdef __linux__
 static void set_nonblocking_or_close(int fd)
 {
     int flags = fcntl(fd, F_GETFL);
     if (flags >= 0 && fcntl(fd, F_SETFL, flags | O_NONBLOCK) >= 0) return;
 
     int error = errno;
-    close(fd);
+    mountfd_close(fd);
     errno = error;
     rb_sys_fail("fcntl");
 }
@@ -144,7 +150,7 @@ static VALUE native_syscall_available(VALUE self, VALUE name)
     long result;
     if (strcmp(value, "fsopen") == 0) {
         result = syscall(SYS_fsopen, "__mountfd_probe__", FSOPEN_CLOEXEC);
-        if (result >= 0) close((int)result);
+        if (result >= 0) mountfd_close((int)result);
     } else if (strcmp(value, "mount_setattr") == 0) {
         result = syscall(SYS_mount_setattr, -1, "", 0, NULL, 0);
     } else if (strcmp(value, "statmount") == 0) {

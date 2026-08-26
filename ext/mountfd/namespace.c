@@ -2,11 +2,11 @@
 #include "mountfd.h"
 #include "compat.h"
 
-#include <errno.h>
-#include <unistd.h>
 #ifdef __linux__
+# include <errno.h>
 # include <sched.h>
 # include <sys/mount.h>
+# include <unistd.h>
 #endif
 
 static VALUE native_unshare(VALUE self, VALUE flags)

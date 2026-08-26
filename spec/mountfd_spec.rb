@@ -10,7 +10,11 @@ RSpec.describe Mountfd do
   end
 
   it "loads without Linux syscall support" do
-    expect(Mountfd.supported?).to be(false) unless RUBY_PLATFORM.include?("linux")
+    next if RUBY_PLATFORM.include?("linux")
+
+    expect(Mountfd.supported?).to be(false)
+    expect { Mountfd::Native.fsopen("tmpfs", 0) }
+      .to raise_error(Mountfd::UnsupportedError)
   end
 
   it "requires both mount enumeration syscalls" do
