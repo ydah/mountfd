@@ -126,6 +126,35 @@ RSpec.describe Mountfd do
     expect(mount).to be_readonly
   end
 
+  it "ignores unknown and malformed mountinfo fields" do
+    future = "42 21 8:1 / /mnt rw shared:7 future:value unbindable - ext4 /dev/a rw\n"
+    malformed = "42 21 broken / /mnt rw - ext4 /dev/a rw\n"
+
+    expect(Mountfd::MountInfoParser.parse(future).fetch(0).propagation)
+      .to eq(shared: 7, unbindable: true)
+    expect(Mountfd::MountInfoParser.parse(malformed)).to be_empty
+  end
+
+  it "coerces an attachment path only before changing the mount tree" do
+    path = Class.new do
+      attr_reader :calls
+      def initialize = @calls = 0
+      def to_path
+        @calls += 1
+        raise "coerced twice" if @calls > 1
+
+        "/target"
+      end
+    end.new
+    handle = instance_double(Mountfd::Native::Handle, close: nil, closed?: true)
+    expect(Mountfd::Native).to receive(:move_mount).with(
+      handle, "", Mountfd::AT_FDCWD, "/target", Mountfd::Native::MOVE_MOUNT_F_EMPTY_PATH
+    )
+
+    expect(Mountfd::DetachedMount.new(handle).attach(path).path).to eq("/target")
+    expect(path.calls).to eq(1)
+  end
+
   it "assembles recursive open_tree and mount_setattr flags" do
     handle = instance_double(Mountfd::Native::Handle, close: nil, closed?: false)
     tree_flags = Mountfd::Native::OPEN_TREE_CLONE | Mountfd::Native::OPEN_TREE_CLOEXEC | Mountfd::Native::AT_RECURSIVE

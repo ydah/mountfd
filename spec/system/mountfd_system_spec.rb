@@ -156,6 +156,23 @@ RSpec.describe "Mountfd system", :system do
     end
   end
 
+  it "rejects unsafe native string lengths and embedded NUL bytes" do
+    context = Mountfd::FsContext.new("tmpfs")
+    expect do
+      Mountfd::Native.fsconfig(
+        context.fileno, Mountfd::Native::FSCONFIG_SET_BINARY, "blob", "x", 2
+      )
+    end.to raise_error(ArgumentError, /length/)
+    expect do
+      Mountfd::Native.fsconfig(
+        context.fileno, Mountfd::Native::FSCONFIG_SET_BINARY, "blob", "x", -1
+      )
+    end.to raise_error(ArgumentError, /length/)
+    expect { Mountfd::Native.fsopen("tmpfs\0suffix", 0) }.to raise_error(ArgumentError)
+  ensure
+    context&.close unless context&.closed?
+  end
+
   it "discards an unattached mount when its fd closes" do
     detached = Mountfd::FsContext.open("tmpfs") do |context|
       context.create!

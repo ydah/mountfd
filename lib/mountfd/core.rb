@@ -128,19 +128,21 @@ module Mountfd
     def idmap!(userns) = set_attributes(set: [:idmap], idmap: userns)
 
     def attach(path, beneath: false)
+      target = File.path(path)
       flags = Native::MOVE_MOUNT_F_EMPTY_PATH
       flags |= Native::MOVE_MOUNT_BENEATH if beneath
-      Native.move_mount(@handle, "", AT_FDCWD, File.path(path), flags)
+      Native.move_mount(@handle, "", AT_FDCWD, target, flags)
       close
-      AttachedMount.new(File.path(path))
+      AttachedMount.new(target)
     rescue SystemCallError => error
       raise MountError, "move_mount: #{error.message}", cause: error
     end
 
     def close
       @handle.close
-      Mountfd.__send__(:untrack, self)
       nil
+    ensure
+      Mountfd.__send__(:untrack, self) if @handle.closed?
     end
   end
 
@@ -257,12 +259,13 @@ module Mountfd
     end
 
     def replace(path)
+      target = File.path(path)
       detached = yield
       raise ArgumentError, "replace block must return a DetachedMount" unless detached.is_a?(DetachedMount)
 
-      detached.attach(path, beneath: true)
-      umount(path)
-      AttachedMount.new(File.path(path))
+      detached.attach(target, beneath: true)
+      umount(target)
+      AttachedMount.new(target)
     rescue StandardError
       detached&.discard unless detached&.closed?
       raise

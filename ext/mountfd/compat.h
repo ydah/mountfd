@@ -153,6 +153,45 @@ struct mount_attr {
 # ifndef NS_GET_MNTNS_ID
 #  define NS_GET_MNTNS_ID _IOR(NSIO, 0x5, uint64_t)
 # endif
+# ifndef MNT_ID_REQ_SIZE_VER0
+#  define MNT_ID_REQ_SIZE_VER0 24
+# endif
+# ifndef MNT_ID_REQ_SIZE_VER1
+#  define MNT_ID_REQ_SIZE_VER1 32
+# endif
+# ifndef STATMOUNT_SB_BASIC
+#  define STATMOUNT_SB_BASIC 0x00000001U
+# endif
+# ifndef STATMOUNT_MNT_BASIC
+#  define STATMOUNT_MNT_BASIC 0x00000002U
+# endif
+# ifndef STATMOUNT_PROPAGATE_FROM
+#  define STATMOUNT_PROPAGATE_FROM 0x00000004U
+# endif
+# ifndef STATMOUNT_MNT_ROOT
+#  define STATMOUNT_MNT_ROOT 0x00000008U
+# endif
+# ifndef STATMOUNT_MNT_POINT
+#  define STATMOUNT_MNT_POINT 0x00000010U
+# endif
+# ifndef STATMOUNT_FS_TYPE
+#  define STATMOUNT_FS_TYPE 0x00000020U
+# endif
+# ifndef STATMOUNT_MNT_NS_ID
+#  define STATMOUNT_MNT_NS_ID 0x00000040U
+# endif
+# ifndef STATMOUNT_MNT_OPTS
+#  define STATMOUNT_MNT_OPTS 0x00000080U
+# endif
+# ifndef STATMOUNT_FS_SUBTYPE
+#  define STATMOUNT_FS_SUBTYPE 0x00000100U
+# endif
+# ifndef STATMOUNT_SB_SOURCE
+#  define STATMOUNT_SB_SOURCE 0x00000200U
+# endif
+# ifndef LSMT_ROOT
+#  define LSMT_ROOT UINT64_MAX
+# endif
 #endif
 
 #endif

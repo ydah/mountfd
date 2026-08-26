@@ -31,17 +31,22 @@ module Mountfd
         (mount_options + super_options).uniq.freeze, parse_propagation(optional),
         parse_attrs(mount_options, optional), major, minor
       )
-    rescue ArgumentError
+    rescue ArgumentError, TypeError
       nil
     end
 
     def self.decode(value) = value.gsub(ESCAPE) { Regexp.last_match(1).to_i(8).chr }
 
     def self.parse_propagation(fields)
-      fields.to_h do |field|
+      fields.filter_map do |field|
         name, value = field.split(":", 2)
-        [name.to_sym, value ? Integer(value, 10) : true]
-      end.freeze
+        case name
+        when "shared", "master", "propagate_from"
+          [name.to_sym, Integer(value, 10)] if value
+        when "unbindable"
+          [:unbindable, true]
+        end
+      end.to_h.freeze
     end
 
     def self.parse_attrs(options, optional)

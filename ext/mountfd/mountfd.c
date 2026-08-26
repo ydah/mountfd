@@ -189,6 +189,9 @@ static VALUE native_fsconfig(VALUE self, VALUE handle, VALUE command, VALUE key,
         if (cmd == FSCONFIG_SET_BINARY) StringValue(value);
         else StringValueCStr(value);
     }
+    if (cmd == FSCONFIG_SET_BINARY &&
+        (raw_aux < 0 || (NIL_P(value) ? raw_aux != 0 : raw_aux > RSTRING_LEN(value))))
+        rb_raise(rb_eArgError, "binary fsconfig length must be between zero and the value size");
     key_ptr = NIL_P(key) ? NULL : RSTRING_PTR(key);
     if (NIL_P(value)) value_ptr = NULL;
     else value_ptr = RSTRING_PTR(value);
@@ -330,8 +333,12 @@ static VALUE native_read_diagnostics(VALUE self, VALUE handle)
     int fd = fd_from(handle);
     VALUE output = rb_str_new(NULL, 0);
     ssize_t length;
-    while ((length = read(fd, buffer, sizeof(buffer))) > 0)
-        rb_str_cat(output, buffer, length);
+    for (;;) {
+        length = read(fd, buffer, sizeof(buffer));
+        if (length > 0) rb_str_cat(output, buffer, length);
+        else if (length < 0 && errno == EINTR) continue;
+        else break;
+    }
     if (length < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != ENODATA)
         rb_sys_fail("read(fs_context)");
     return output;

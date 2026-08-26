@@ -10,11 +10,11 @@
 #include <unistd.h>
 
 #ifdef __linux__
-#define MOUNTFD_LSMT_ROOT UINT64_MAX
-#define MOUNTFD_REQ_SIZE 24
-#define MOUNTFD_REQ_SIZE_NS 32
 #define MOUNTFD_STAT_SIZE 512
-#define MOUNTFD_STAT_MASK 0x2ffU
+#define MOUNTFD_STAT_MASK (STATMOUNT_SB_BASIC | STATMOUNT_MNT_BASIC | \
+    STATMOUNT_PROPAGATE_FROM | STATMOUNT_MNT_ROOT | STATMOUNT_MNT_POINT | \
+    STATMOUNT_FS_TYPE | STATMOUNT_MNT_NS_ID | STATMOUNT_MNT_OPTS | \
+    STATMOUNT_FS_SUBTYPE | STATMOUNT_SB_SOURCE)
 
 struct mountfd_mnt_id_req {
     uint32_t size;
@@ -81,11 +81,11 @@ static VALUE stat_hash(char *buffer, size_t capacity)
     PUT("peer_group", ULL2NUM(stat->peer_group));
     PUT("master", ULL2NUM(stat->master));
     PUT("propagate_from", ULL2NUM(stat->propagate_from));
-    PUT("mnt_root", (stat->mask & 0x8U) ? stat_string(buffer, capacity, stat->root) : Qnil);
-    PUT("mount_point", (stat->mask & 0x10U) ? stat_string(buffer, capacity, stat->point) : Qnil);
-    PUT("fs_type", (stat->mask & 0x20U) ? stat_string(buffer, capacity, stat->fs_type) : Qnil);
-    PUT("source", (stat->mask & 0x200U) ? stat_string(buffer, capacity, stat->source) : Qnil);
-    PUT("options", (stat->mask & 0x80U) ? stat_string(buffer, capacity, stat->mnt_opts) : Qnil);
+    PUT("mnt_root", (stat->mask & STATMOUNT_MNT_ROOT) ? stat_string(buffer, capacity, stat->root) : Qnil);
+    PUT("mount_point", (stat->mask & STATMOUNT_MNT_POINT) ? stat_string(buffer, capacity, stat->point) : Qnil);
+    PUT("fs_type", (stat->mask & STATMOUNT_FS_TYPE) ? stat_string(buffer, capacity, stat->fs_type) : Qnil);
+    PUT("source", (stat->mask & STATMOUNT_SB_SOURCE) ? stat_string(buffer, capacity, stat->source) : Qnil);
+    PUT("options", (stat->mask & STATMOUNT_MNT_OPTS) ? stat_string(buffer, capacity, stat->mnt_opts) : Qnil);
 #undef PUT
     return hash;
 }
@@ -93,7 +93,7 @@ static VALUE stat_hash(char *buffer, size_t capacity)
 static VALUE stat_one(uint64_t id, uint64_t namespace_id, int namespace_selected)
 {
     struct mountfd_mnt_id_req request = {
-        namespace_selected ? MOUNTFD_REQ_SIZE_NS : MOUNTFD_REQ_SIZE,
+        namespace_selected ? MNT_ID_REQ_SIZE_VER1 : MNT_ID_REQ_SIZE_VER0,
         0, id, MOUNTFD_STAT_MASK, namespace_id
     };
     size_t capacity = 4096;
@@ -127,7 +127,7 @@ static VALUE native_statmounts(VALUE self, VALUE namespace_fd)
 #ifdef __linux__
     uint64_t namespace_id = 0;
     int namespace_selected = !NIL_P(namespace_fd);
-    struct mountfd_mnt_id_req request = {MOUNTFD_REQ_SIZE, 0, MOUNTFD_LSMT_ROOT, 0, 0};
+    struct mountfd_mnt_id_req request = {MNT_ID_REQ_SIZE_VER0, 0, LSMT_ROOT, 0, 0};
     uint64_t ids[256];
     VALUE mounts = rb_ary_new();
     long count;
@@ -136,7 +136,7 @@ static VALUE native_statmounts(VALUE self, VALUE namespace_fd)
     if (namespace_selected) {
         if (ioctl(NUM2INT(namespace_fd), NS_GET_MNTNS_ID, &namespace_id) < 0)
             mountfd_syscall_failed("NS_GET_MNTNS_ID");
-        request.size = MOUNTFD_REQ_SIZE_NS;
+        request.size = MNT_ID_REQ_SIZE_VER1;
         request.mnt_ns_id = namespace_id;
     }
 
