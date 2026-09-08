@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mountfd — Linux mounts, composed in Ruby</title>
+    <meta name="description" content="Ruby bindings for Linux’s file-descriptor-based mount API. Build and configure detached mounts, then attach them atomically.">
+    <meta name="theme-color" content="#ffffff">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Mountfd — Linux mounts, composed in Ruby">
+    <meta property="og:description" content="Prepare a filesystem. Set its attributes. Attach it when it’s ready. A Ruby interface to Linux’s modern mount API.">
+    <meta property="og:url" content="https://ydah.github.io/mountfd/">
+    <link rel="canonical" href="https://ydah.github.io/mountfd/">
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body class="bg-white text-slate-900 antialiased">
+    <a href="#main" class="sr-only focus:not-sr-only focus:block focus:bg-rose-700 focus:p-4 focus:text-white">Skip to content</a>
+    <header class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-6 sm:px-10 lg:px-12">
+      <a href="./" aria-label="Mountfd home" class="flex items-center gap-3 text-2xl font-bold">
+        <img src="./favicon.svg" alt="" width="36" height="36" class="size-9">
+        mountfd
+      </a>
+      <nav aria-label="Main navigation" class="flex flex-wrap items-center gap-5 text-sm font-semibold sm:gap-8">
+        <a href="#how-it-works" class="py-2 hover:text-rose-700">How it works</a>
+        <a href="#get-started" class="py-2 hover:text-rose-700">Get started</a>
+        <a href="https://github.com/ydah/mountfd" class="py-2 hover:text-rose-700">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section aria-labelledby="hero-title" class="mx-auto grid grid-cols-1 max-w-7xl items-center gap-12 px-6 pt-12 pb-16 sm:px-10 sm:pt-20 lg:grid-cols-2 lg:gap-16 lg:px-12 lg:pt-24 lg:pb-24">
+        <div>
+          <p class="mb-6 flex items-center gap-2 text-sm font-semibold text-rose-700">
+            <span aria-hidden="true" class="size-2 rounded-full bg-rose-700"></span>
+            A Ruby gem for the Linux mount API
+          </p>
+          <h1 id="hero-title" class="max-w-xl text-4xl leading-tight font-bold sm:text-6xl lg:text-7xl">Prepare first.<br>Mount when ready.</h1>
+          <p class="mt-6 max-w-lg text-lg leading-relaxed text-slate-600">Build a filesystem, set its attributes, and attach it in one atomic step. Mountfd brings Linux’s file-descriptor-based mount API to Ruby.</p>
+          <div class="mt-8 flex flex-wrap items-center gap-4">
+            <a href="#get-started" class="inline-flex min-h-12 items-center justify-center rounded-lg bg-rose-700 px-6 py-3 font-semibold text-white hover:bg-rose-800">Get started</a>
+            <a href="https://github.com/ydah/mountfd#usage" class="inline-flex min-h-12 items-center justify-center rounded-lg border border-slate-300 px-6 py-3 font-semibold hover:bg-slate-50">Read the docs</a>
+          </div>
+          <p class="mt-6 text-sm text-slate-600 tabular-nums">Ruby 3.2+ &nbsp; / &nbsp; Linux 5.2+ &nbsp; / &nbsp; MIT licensed</p>
+        </div>
+
+        <figure class="min-w-0">
+          <div class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+            <div class="flex items-center justify-between border-b border-slate-200 px-5 py-4 text-sm">
+              <span class="font-semibold">A mount, before it’s mounted</span>
+              <span class="text-slate-500">Ruby</span>
+            </div>
+            <pre tabindex="0" aria-label="Ruby example: prepare and attach a tmpfs mount" class="overflow-x-auto p-5 font-mono text-sm leading-7 sm:p-6"><code><span class="text-rose-700">require</span> "mountfd"
+
+mount = Mountfd::FsContext.open("tmpfs") <span class="text-rose-700">do</span> |fs|
+  fs.set("size", "64M")
+  fs.create!
+  fs.mount(attrs: {nosuid: <span class="text-rose-700">true</span>})
+<span class="text-rose-700">end</span>
+
+<span class="text-slate-500"># Ready. Now make it visible.</span>
+mount.attach("/mnt/tmp")</code></pre>
+            <div class="border-t border-slate-200 bg-white p-5 sm:p-6">
+              <div class="flex items-center gap-2 sm:gap-5" aria-hidden="true">
+                <div class="flex-1 rounded-lg border border-dashed border-slate-400 px-2 py-4 sm:px-3 text-center">
+                  <svg viewBox="0 0 32 32" class="mx-auto mb-2 size-8 fill-none stroke-slate-600" stroke-width="1.5"><path d="m5 10 11-6 11 6-11 6zM5 16l11 6 11-6M5 22l11 6 11-6"/></svg>
+                  <span class="text-sm font-semibold">Detached mount</span>
+                </div>
+                <div class="text-center text-rose-700">
+                  <code class="text-xs">attach</code>
+                  <svg viewBox="0 0 56 20" class="mt-2 h-5 w-8 sm:w-14 fill-none stroke-current" stroke-width="1.5"><path d="M0 10h53m-8-7 8 7-8 7"/></svg>
+                </div>
+                <div class="flex-1 rounded-lg bg-rose-700 px-2 py-4 sm:px-3 text-center text-white">
+                  <svg viewBox="0 0 32 32" class="mx-auto mb-2 size-8 fill-none stroke-current" stroke-width="1.5"><path d="M4 25V8h9l3 4h12v13zM12 19l3 3 6-6"/></svg>
+                  <code class="text-sm">/mnt/tmp</code>
+                </div>
+              </div>
+              <p class="mt-4 text-center text-xs leading-relaxed text-slate-600">Invisible to the namespace until you attach it.</p>
+            </div>
+          </div>
+          <figcaption class="mt-4 text-sm leading-relaxed text-slate-500">Configure off-tree. Expose only the finished mount.</figcaption>
+        </figure>
+      </section>
+
+      <section id="how-it-works" aria-labelledby="flow-title" class="scroll-mt-8 bg-slate-50">
+        <div class="mx-auto max-w-7xl px-6 py-16 sm:px-10 lg:px-12 lg:py-20">
+          <div class="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-16">
+            <h2 id="flow-title" class="max-w-md text-3xl leading-tight font-bold sm:text-4xl">A mount is a handle.<br>Until you give it a home.</h2>
+            <p class="max-w-xl text-base leading-7 text-slate-600">The legacy mount API exposes a mount before later attribute changes. Mountfd lets you prepare it while detached, then attach the finished tree with <code class="text-sm text-slate-900">move_mount</code>. Close the descriptor to discard an unattached mount.</p>
+          </div>
+          <ol class="mt-12 grid grid-cols-1 gap-8 md:grid-cols-3 md:gap-10">
+            <li class="border-t-2 border-slate-300 pt-5">
+              <span class="text-sm font-semibold text-rose-700 tabular-nums">01 / Create</span>
+              <h3 class="mt-3 text-xl font-semibold">Open a filesystem context</h3>
+              <p class="mt-3 text-sm leading-6 text-slate-600">Pass options directly to the kernel. Get structured diagnostics when a configuration fails.</p>
+              <p class="mt-4"><code class="text-xs text-slate-500">fsopen · fsconfig</code></p>
+            </li>
+            <li class="border-t-2 border-slate-300 pt-5">
+              <span class="text-sm font-semibold text-rose-700 tabular-nums">02 / Prepare</span>
+              <h3 class="mt-3 text-xl font-semibold">Keep it detached</h3>
+              <p class="mt-3 text-sm leading-6 text-slate-600">Create a new mount or clone an existing tree. Apply attributes before the mount becomes visible.</p>
+              <p class="mt-4"><code class="text-xs text-slate-500">fsmount · open_tree · mount_setattr</code></p>
+            </li>
+            <li class="border-t-2 border-rose-700 pt-5">
+              <span class="text-sm font-semibold text-rose-700 tabular-nums">03 / Attach</span>
+              <h3 class="mt-3 text-xl font-semibold">Put it in place, atomically</h3>
+              <p class="mt-3 text-sm leading-6 text-slate-600">Attach the prepared mount at its destination. No intermediate configuration is exposed.</p>
+              <p class="mt-4"><code class="text-xs text-slate-500">move_mount</code></p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section aria-labelledby="examples-title" class="mx-auto grid grid-cols-1 max-w-7xl gap-10 px-6 py-16 sm:px-10 lg:grid-cols-5 lg:gap-16 lg:px-12 lg:py-24">
+        <div class="lg:col-span-2">
+          <h2 id="examples-title" class="text-3xl leading-tight font-bold sm:text-4xl">Small building blocks.<br>Real filesystem work.</h2>
+          <p class="mt-5 max-w-md leading-7 text-slate-600">For Ruby tools that manage containers, sandboxes, and storage. A native C extension calls the kernel directly.</p>
+          <a href="https://github.com/ydah/mountfd/tree/main/examples" class="mt-6 inline-block py-2 font-semibold text-rose-700 underline decoration-rose-300 underline-offset-4 hover:decoration-rose-700">Explore runnable examples</a>
+        </div>
+        <div class="divide-y divide-slate-200 lg:col-span-3">
+          <article class="pb-6">
+            <h3 class="text-xl font-semibold">Read-only trees, ready before attach</h3>
+            <p class="mt-2 text-sm leading-6 text-slate-600">Clone a bind mount and apply recursive attributes while it is still detached.</p>
+            <pre tabindex="0" aria-label="Ruby read-only bind mount example" class="mt-4 overflow-x-auto rounded-lg bg-slate-50 p-4 text-xs leading-6 sm:text-sm"><code>Mountfd.bind("/src", "/dst",
+  recursive: true, attrs: {rdonly: true})</code></pre>
+          </article>
+          <article class="py-6">
+            <h3 class="text-xl font-semibold">Map ownership at the mount</h3>
+            <p class="mt-2 text-sm leading-6 text-slate-600">Use idmapped mounts to present different user and group IDs without recursively changing file ownership. Requires Linux 5.12+ and filesystem support.</p>
+            <a href="https://github.com/ydah/mountfd/blob/main/examples/idmapped_volume.rb" class="mt-3 inline-block py-1 text-sm font-semibold text-rose-700 underline underline-offset-4">View the idmapped volume example</a>
+          </article>
+          <article class="pt-6">
+            <h3 class="text-xl font-semibold">Ask the system what’s mounted</h3>
+            <p class="mt-2 text-sm leading-6 text-slate-600">Discover mounts with <code>statmount</code> and <code>listmount</code>, with a mountinfo fallback for older kernels.</p>
+            <pre tabindex="0" aria-label="Ruby mount discovery example" class="mt-4 overflow-x-auto rounded-lg bg-slate-50 p-4 text-xs leading-6 sm:text-sm"><code>Mountfd.mounts
+Mountfd.mount_at("/home")</code></pre>
+          </article>
+        </div>
+      </section>
+
+      <section id="get-started" aria-labelledby="start-title" class="scroll-mt-8 border-y border-slate-200 bg-slate-50">
+        <div class="mx-auto grid grid-cols-1 max-w-7xl gap-10 px-6 py-16 sm:px-10 lg:grid-cols-2 lg:gap-16 lg:px-12 lg:py-20">
+          <div>
+            <h2 id="start-title" class="text-3xl font-bold sm:text-4xl">Your next mount starts here.</h2>
+            <p class="mt-5 max-w-lg leading-7 text-slate-600">Add Mountfd to your Ruby project, then start with a small tmpfs mount in a Linux environment.</p>
+            <pre tabindex="0" aria-label="Install Mountfd with Bundler" class="mt-6 overflow-x-auto rounded-lg border border-slate-300 bg-white p-5 text-base"><code><span aria-hidden="true" class="select-none text-slate-500">$ </span>bundle add mountfd</code></pre>
+            <div class="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold">
+              <a href="https://github.com/ydah/mountfd#quick-start" class="py-2 text-rose-700 underline underline-offset-4">Follow the quick start</a>
+              <a href="https://rubygems.org/gems/mountfd" class="py-2 text-rose-700 underline underline-offset-4">View on RubyGems</a>
+            </div>
+          </div>
+          <div>
+            <h3 class="text-lg font-semibold">Check your environment</h3>
+            <dl class="mt-3 divide-y divide-slate-200 text-sm tabular-nums">
+              <div class="flex justify-between gap-4 py-3"><dt class="text-slate-600">Ruby</dt><dd class="font-semibold">3.2 or newer</dd></div>
+              <div class="flex justify-between gap-4 py-3"><dt class="text-slate-600">Linux mount API</dt><dd class="font-semibold">5.2 or newer</dd></div>
+              <div class="flex justify-between gap-4 py-3"><dt class="text-slate-600">Idmapped mounts</dt><dd class="font-semibold">5.12 or newer</dd></div>
+              <div class="flex justify-between gap-4 py-3"><dt class="text-slate-600">statmount / listmount</dt><dd class="font-semibold">6.8 or newer</dd></div>
+            </dl>
+            <p class="mt-4 text-sm leading-6 text-slate-600">Mount operations need <code>CAP_SYS_ADMIN</code> in the owning user namespace. Container and host policies may restrict access.</p>
+            <p class="mt-3 text-sm leading-6 text-slate-600">The gem also loads on macOS and Windows for feature detection; mount operations remain Linux-only. Check <code>Mountfd.supported?</code> before use.</p>
+            <a href="https://github.com/ydah/mountfd#compatibility" class="mt-3 inline-block py-2 text-sm font-semibold text-rose-700 underline underline-offset-4">Read compatibility notes</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-6 px-6 py-8 sm:px-10 lg:px-12">
+      <p class="text-sm text-slate-600"><span class="font-bold text-slate-900">mountfd</span> &nbsp; Made by <a href="https://github.com/ydah" class="underline underline-offset-4 hover:text-rose-700">Yudai Takada</a></p>
+      <nav aria-label="Footer navigation" class="flex flex-wrap gap-6 text-sm text-slate-600">
+        <a href="https://github.com/ydah/mountfd" class="py-2 hover:text-rose-700">Source code</a>
+        <a href="https://github.com/ydah/mountfd/issues" class="py-2 hover:text-rose-700">Report an issue</a>
+        <a href="https://github.com/ydah/mountfd/blob/main/LICENSE.txt" class="py-2 hover:text-rose-700">MIT License</a>
+      </nav>
+    </footer>
+  </body>
+</html>

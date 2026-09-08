@@ -13,3 +13,5 @@ Gemfile.lock
 *.gem
 *.bundle
 *.so
+/site/node_modules/
+/site/dist/
